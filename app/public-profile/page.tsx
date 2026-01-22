@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { api, getCurrentUser, type UserData } from "@/lib/api-client";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -38,7 +38,7 @@ interface Review {
   created_date: string;
 }
 
-export default function PublicProfilePage() {
+function PublicProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [profileUser, setProfileUser] = useState<UserData | null>(null);
@@ -311,5 +311,20 @@ export default function PublicProfilePage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function PublicProfilePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-slate-600">Loading profile...</p>
+        </div>
+      </div>
+    }>
+      <PublicProfilePageContent />
+    </Suspense>
   );
 }

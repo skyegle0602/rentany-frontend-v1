@@ -1,7 +1,6 @@
 'use client'
 
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, getCurrentUser, type UserData } from "@/lib/api-client";
@@ -80,7 +79,7 @@ interface StripeTestResult {
 }
 
 
-export default function ManageItemPage() {
+function ManageItemPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [item, setItem] = useState<Item | null>(null);
@@ -1173,5 +1172,20 @@ export default function ManageItemPage() {
         </Dialog>
       </div>
     </div>
+  );
+}
+
+export default function ManageItemPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <ManageItemPageContent />
+    </Suspense>
   );
 }

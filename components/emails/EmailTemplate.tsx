@@ -1,10 +1,17 @@
 "use client";
 
-
 // This is a helper file for creating professional HTML emails
 // You can import and use these templates throughout your app
 
-export const createEmailTemplate = ({ title, content, buttonText, buttonUrl, footerText }) => {
+interface EmailTemplateProps {
+  title: string;
+  content: string;
+  buttonText?: string;
+  buttonUrl?: string;
+  footerText?: string;
+}
+
+export const createEmailTemplate = ({ title, content, buttonText, buttonUrl, footerText }: EmailTemplateProps) => {
   return `
 <!DOCTYPE html>
 <html>
@@ -74,7 +81,18 @@ export const createEmailTemplate = ({ title, content, buttonText, buttonUrl, foo
 };
 
 // Helper for creating info boxes
-export const createInfoBox = ({ title, items, highlight = false }) => {
+interface InfoBoxItem {
+  label: string;
+  value: string;
+}
+
+interface InfoBoxProps {
+  title: string;
+  items: InfoBoxItem[];
+  highlight?: boolean;
+}
+
+export const createInfoBox = ({ title, items, highlight = false }: InfoBoxProps) => {
   const bgColor = highlight ? '#fef3c7' : '#f1f5f9';
   const borderColor = highlight ? '#fbbf24' : '#cbd5e1';
   

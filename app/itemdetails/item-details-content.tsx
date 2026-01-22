@@ -481,10 +481,10 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         const renterInfo = createInfoBox({
           title: '👤 Renter Information',
           items: [
-            { label: 'Name', value: currentUser.full_name },
+            { label: 'Name', value: currentUser.full_name || currentUser.email || 'Not set' },
             { label: 'Username', value: currentUser.username ? '@' + currentUser.username : 'Not set' },
             { label: 'Rating', value: averageRating + (renterReviews.length > 0 ? ' ⭐ (' + renterReviews.length + ' reviews)' : '') },
-            { label: 'Verification', value: verificationBadge }]
+            { label: 'Verification', value: verificationBadge || 'Not verified' }]
 
         });
 
