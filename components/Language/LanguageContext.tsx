@@ -17,27 +17,34 @@ interface LanguageProviderProps {
 }
 
 export function LanguageProvider({ children }: LanguageProviderProps) {
-  const [language, setLanguage] = useState<string>(() => {
-    // Check if we're in the browser (not SSR)
+  const [language, setLanguage] = useState<string>('en'); // Always start with 'en' to avoid hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Initialize language after mount to avoid hydration issues
+  useEffect(() => {
+    setIsMounted(true);
     if (typeof window !== 'undefined') {
       // Check localStorage first, then detect from browser
       const savedLang = localStorage.getItem('preferred_language');
-      return savedLang || detectLanguage();
+      if (savedLang) {
+        setLanguage(savedLang);
+      } else {
+        const detected = detectLanguage();
+        setLanguage(detected);
+      }
     }
-    // Default to English during SSR
-    return detectLanguage();
-  });
+  }, []);
 
   useEffect(() => {
-    // Only run in browser
-    if (typeof window !== 'undefined') {
+    // Only run in browser and after mount
+    if (isMounted && typeof window !== 'undefined') {
       // Save language preference
       localStorage.setItem('preferred_language', language);
       
       // Set HTML lang attribute for accessibility
       document.documentElement.lang = language;
     }
-  }, [language]);
+  }, [language, isMounted]);
 
   const t = (keyPath: string): string => {
     const keys = keyPath.split('.');

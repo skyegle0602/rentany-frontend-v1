@@ -1,14 +1,16 @@
+"use client";
+
 import React from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/ProductCard";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Eye, Play, Zap } from "lucide-react";
 import Link from "next/link";
 import { createPageUrl } from "@/lib/utils";
-import FavoriteButton from '../Favorites/FavoriteButton';
+import FavoriteButton from '../favorites/FavoriteButton';
 import { optimizeCardImage } from '../utils/imageOptimizer';
-import { useLanguage } from '../Language/LanguageContext';
+import { useLanguage } from '../language/LanguageContext';
 
 const categoryColors: Record<string, string> = {
   electronics: "bg-blue-100 text-blue-800 border-blue-200",
@@ -39,6 +41,8 @@ interface Item {
   view_count?: number;
   favorite_count?: number;
   created_date?: string;
+  owner_id?: string;
+  created_by?: string;
   [key: string]: any;
 }
 
@@ -54,47 +58,86 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
   const validVideos = (item.videos || []).filter(Boolean);
   const validImages = (item.images || []).filter(Boolean);
 
-  const primaryMedia = validVideos[0] || validImages[0] || "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop";
-  const isPrimaryMediaVideo = isVideoUrl(primaryMedia);
+  // Debug: Log image URLs to help diagnose issues
+  if (process.env.NODE_ENV === 'development') {
+    if (validImages.length > 0) {
+      console.log(`✅ Item ${item.id} (${item.title}) has ${validImages.length} image(s):`, validImages);
+    } else {
+      console.warn(`⚠️ Item ${item.id} (${item.title}) has NO images`);
+      console.warn(`   Raw images array:`, item.images);
+    }
+  }
+
+  // Get the first valid image or video from user uploads (NO placeholder fallback)
+  const primaryMedia = validVideos[0] || validImages[0] || null;
+  const isPrimaryMediaVideo = primaryMedia ? isVideoUrl(primaryMedia) : false;
   
-  // Optimize image for card display
-  const optimizedImage = !isPrimaryMediaVideo ? optimizeCardImage(primaryMedia) : primaryMedia;
+  // Optimize image for card display (only if we have an actual image)
+  const optimizedImage = primaryMedia && !isPrimaryMediaVideo 
+    ? optimizeCardImage(primaryMedia) 
+    : (primaryMedia || undefined);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={false}
+      animate={{ opacity: 1 }}
       whileHover={{ y: -4 }}
       transition={{ duration: 0.3 }}
       className="h-full"
     >
       <Card className="group overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 bg-white h-full flex flex-col">
         <div className="relative aspect-square overflow-hidden bg-slate-100">
-          {isPrimaryMediaVideo ? (
-            <div className="relative">
-              <video
-                src={primaryMedia}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                muted
-                loop
-                playsInline
-                onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
-                onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
-                controlsList="nodownload"
-              />
-              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
-                  <Play className="w-4 h-4 text-slate-900 ml-0.5" />
+          {primaryMedia ? (
+            isPrimaryMediaVideo ? (
+              <div className="relative">
+                <video
+                  src={primaryMedia}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  muted
+                  loop
+                  playsInline
+                  onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
+                  onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
+                  controlsList="nodownload"
+                />
+                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
+                    <Play className="w-4 h-4 text-slate-900 ml-0.5" />
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : optimizedImage ? (
+              <img
+                src={optimizedImage}
+                alt={item.title}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                loading="lazy"
+                onError={(e) => {
+                  // If image fails to load, hide it and show "No image" message
+                  const target = e.target as HTMLImageElement
+                  target.style.display = 'none'
+                  const parent = target.parentElement
+                  if (parent && !parent.querySelector('.no-image-message')) {
+                    const messageDiv = document.createElement('div')
+                    messageDiv.className = 'no-image-message w-full h-full bg-slate-200 flex items-center justify-center'
+                    messageDiv.innerHTML = `
+                      <div class="text-center p-4">
+                        <p class="text-slate-500 text-sm">Image failed to load</p>
+                      </div>
+                    `
+                    parent.appendChild(messageDiv)
+                  }
+                }}
+              />
+            ) : null
           ) : (
-            <img
-              src={optimizedImage}
-              alt={item.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              loading="lazy"
-            />
+            // Show "No image" message if no images are available
+            <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+              <div className="text-center p-4">
+                <p className="text-slate-500 text-sm">No image available</p>
+                <p className="text-slate-400 text-xs mt-1">Please add an image</p>
+              </div>
+            </div>
           )}
 
           <div className="absolute top-2 left-2 flex flex-col gap-1">
@@ -153,7 +196,15 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
           </div>
 
           <div className="mt-2">
-            <Link href={`${createPageUrl("ItemDetails")}?id=${item.id}`} className="block">
+            <Link 
+              href={
+                currentUser?.id === item.owner_id || 
+                (currentUser?.emailAddresses?.[0]?.emailAddress === item.created_by)
+                  ? `/manage-item?id=${item.id}`
+                  : `/itemdetails?id=${item.id}`
+              } 
+              className="block"
+            >
               <Button
                 size="sm"
                 className="w-full bg-slate-800 hover:bg-slate-700 text-white transition-all duration-200 rounded-lg h-7 sm:h-8 text-[10px] sm:text-xs px-2"

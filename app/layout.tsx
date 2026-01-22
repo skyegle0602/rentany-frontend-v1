@@ -3,17 +3,19 @@ import { ClerkProvider } from '@clerk/nextjs'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
 import LayoutWrapper from '@/components/layout/LayoutWrapper'
-import { LanguageProvider } from '@/components/Language/LanguageContext'
+import { LanguageProvider } from '@/components/language/LanguageContext'
 import './globals.css'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
+  display: 'swap',
 })
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+  display: 'swap',
 })
 
 export const metadata: Metadata = {

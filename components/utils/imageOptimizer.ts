@@ -23,3 +23,5 @@ export function optimizeCardImage(imageUrl: string): string {
   return imageUrl;
 }
 
+
+

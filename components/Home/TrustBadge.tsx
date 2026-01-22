@@ -6,7 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useLanguage } from '../Language/LanguageContext';
+import { useLanguage } from '../language/LanguageContext';
 
 const getBadges = (t: (keyPath: string) => string) => [
   {

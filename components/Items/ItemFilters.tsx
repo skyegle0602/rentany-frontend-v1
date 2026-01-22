@@ -28,7 +28,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useLanguage } from '@/components/Language/LanguageContext';
+import { useLanguage } from '@/components/language/LanguageContext';
 
 // Type definitions
 interface Category {
@@ -389,7 +389,7 @@ export default function ItemFilters({
         {setSortBy && (
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-48">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-grey-500">
                 <ArrowUpDown className="w-4 h-4" />
                 <SelectValue placeholder={t('filters.sortBy')} />
               </div>

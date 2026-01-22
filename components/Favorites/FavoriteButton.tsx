@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Favorite, type FavoriteData } from '@/entities/Favorite';
-import { User, type UserData } from '@/entities/User';
+import { createFavorite, deleteFavorite, deleteFavoriteByItem, type FavoriteData, redirectToSignIn, type UserData } from '@/lib/api-client';
 import { Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -30,7 +29,7 @@ export default function FavoriteButton({
     e.stopPropagation();
 
     if (!currentUser) {
-      await User.login();
+      redirectToSignIn();
       return;
     }
 
@@ -38,15 +37,39 @@ export default function FavoriteButton({
     try {
       if (isFavorited) {
         const favorite = userFavorites.find((fav) => fav.item_id === itemId);
-        if (favorite && favorite.id) {
-          await Favorite.delete(favorite.id);
+        const userEmail = (currentUser as any).email || 
+                         (currentUser as any).emailAddresses?.[0]?.emailAddress ||
+                         currentUser.email;
+        
+        // Try to delete by item_id and user_email first (more reliable)
+        // If that fails, try by ID as fallback
+        try {
+          await deleteFavoriteByItem({
+            item_id: itemId,
+            user_email: userEmail,
+          });
+        } catch (error: any) {
+          // If item-based deletion fails and we have an ID, try ID-based deletion
+          if (favorite && favorite.id) {
+            console.warn('Deletion by item_id failed, trying by ID:', error.message);
+            try {
+              await deleteFavorite(favorite.id);
+            } catch (idError: any) {
+              // If both methods fail, log and re-throw
+              console.error('Both deletion methods failed:', { itemError: error.message, idError: idError.message });
+              throw idError;
+            }
+          } else {
+            // No ID available, re-throw the original error
+            throw error;
+          }
         }
       } else {
         // Handle both Clerk user object and UserData type
         const userEmail = (currentUser as any).email || 
                          (currentUser as any).emailAddresses?.[0]?.emailAddress ||
                          currentUser.email;
-        await Favorite.create({
+        await createFavorite({
           user_email: userEmail,
           item_id: itemId
         });

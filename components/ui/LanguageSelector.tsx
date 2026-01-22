@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useLanguage } from "@/components/Language/LanguageContext";
+import { useLanguage } from "@/components/language/LanguageContext";
 import { Globe } from "lucide-react";
 
 export default function LanguageSelector() {
@@ -75,4 +75,6 @@ export default function LanguageSelector() {
     </div>
   );
 }
+
+
 

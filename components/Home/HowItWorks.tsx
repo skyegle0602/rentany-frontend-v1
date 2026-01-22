@@ -54,10 +54,10 @@ export default function HowItWorks() {
           return (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 20 }}
+              initial={false}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: index * 0.1 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ delay: index * 0.1, duration: 0.4 }}
               className="relative"
             >
               <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-100 h-full">

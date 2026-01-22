@@ -2,13 +2,42 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import HowItWorks from "@/components/Home/HowItWorks";
-import RecentlyViewed from "@/components/Home/RecentlyViewed";
-import FeaturedItems from "@/components/Home/FeaturedItems";
-import Testerminal from "@/components/Home/Testerminal";
-import TrustBadges from "@/components/Home/TrustBadge";
-import ItemFilters from "@/components/Items/ItemFilters";
-import { useLanguage } from "@/components/Language/LanguageContext";
+import HowItWorks from "@/components/home/HowItWorks";
+import RecentlyViewed from "@/components/home/RecentlyViewed";
+import RecommendedItems from "@/components/home/RecommendedItems";
+import AIIItems from "@/components/home/AIIItems";
+import Testerminal from "@/components/home/Testerminal";
+import TrustBadges from "@/components/home/TrustBadge";
+import dynamic from "next/dynamic";
+import { useLanguage } from "@/components/language/LanguageContext";
+
+// Dynamically import ItemFilters to avoid SSR hydration issues with Radix UI Select
+const ItemFilters = dynamic(() => import("@/components/items/ItemFilters"), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-white py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="space-y-4">
+          <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+  ),
+});
+
+// Dynamically import MapView to avoid SSR issues with Leaflet
+const MapView = dynamic(() => import("@/components/map/MapView"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[600px] bg-gray-100 rounded-lg flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-slate-600">Loading map...</p>
+      </div>
+    </div>
+  ),
+});
 
 type CategoryValue = "all" | "electronics" | "tools" | "fashion" | "sports" | "vehicles" | "home" | "books" | "music" | "photography" | "other";
 type SortByType = "relevance" | "price_low" | "price_high" | "rating" | "newest" | "popular";
@@ -135,40 +164,90 @@ export default function HomeContent() {
           <TrustBadges />
         </div>
       </div>
-      
-      {/* Item Filters Section */}
-      <div className="bg-white py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <ItemFilters
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            locationQuery={locationQuery}
-            setLocationQuery={setLocationQuery}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            priceRange={priceRange}
-            setPriceRange={setPriceRange}
-            availabilityFilter={availabilityFilter}
-            setAvailabilityFilter={setAvailabilityFilter}
-            distanceFilter={distanceFilter}
-            setDistanceFilter={setDistanceFilter}
-            dateFilter={dateFilter}
-            setDateFilter={setDateFilter}
-            ratingFilter={ratingFilter}
-            setRatingFilter={setRatingFilter}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            locationError={locationError}
-            view={view}
-            setView={setView}
-          />
+
+      {/* Map or List View */}
+      {view === "map" ? (
+        <div className="bg-white py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ItemFilters
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              locationQuery={locationQuery}
+              setLocationQuery={setLocationQuery}
+              selectedCategory={selectedCategory}
+              setSelectedCategory={setSelectedCategory}
+              priceRange={priceRange}
+              setPriceRange={setPriceRange}
+              availabilityFilter={availabilityFilter}
+              setAvailabilityFilter={setAvailabilityFilter}
+              distanceFilter={distanceFilter}
+              setDistanceFilter={setDistanceFilter}
+              dateFilter={dateFilter}
+              setDateFilter={setDateFilter}
+              ratingFilter={ratingFilter}
+              setRatingFilter={setRatingFilter}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              locationError={locationError}
+              view={view}
+              setView={setView}
+            />
+            <div className="mt-8">
+              <MapView
+                searchQuery={searchQuery}
+                locationQuery={locationQuery}
+                selectedCategory={selectedCategory}
+                priceRange={priceRange}
+                availabilityFilter={availabilityFilter}
+              />
+            </div>
+          </div>
         </div>
-      </div>
-      
-      {/* Recently Viewed Section */}
-      <RecentlyViewed />
-      {/* Featured Items Section */}
-      <FeaturedItems />
+      ) : (
+        <>
+          {/* Recently Viewed Section */}
+          <RecentlyViewed />
+          {/* Recommended Items Section */}
+          <RecommendedItems />
+          {/* Item Filters Section */}
+          <div className="bg-white py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <ItemFilters
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                locationQuery={locationQuery}
+                setLocationQuery={setLocationQuery}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                priceRange={priceRange}
+                setPriceRange={setPriceRange}
+                availabilityFilter={availabilityFilter}
+                setAvailabilityFilter={setAvailabilityFilter}
+                distanceFilter={distanceFilter}
+                setDistanceFilter={setDistanceFilter}
+                dateFilter={dateFilter}
+                setDateFilter={setDateFilter}
+                ratingFilter={ratingFilter}
+                setRatingFilter={setRatingFilter}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                locationError={locationError}
+                view={view}
+                setView={setView}
+              />
+            </div>
+          </div>
+          {/* All Items Section */}
+          <AIIItems 
+            searchQuery={searchQuery}
+            locationQuery={locationQuery}
+            selectedCategory={selectedCategory}
+            priceRange={priceRange}
+            availabilityFilter={availabilityFilter}
+            sortBy={sortBy}
+          />
+        </>
+      )}
       {/* How It Works Section */}
       <div className="bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

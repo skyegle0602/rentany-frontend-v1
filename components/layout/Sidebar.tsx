@@ -2,13 +2,37 @@
 
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getCurrentUser, type UserData } from "@/lib/api-client";
 
 export default function Sidebar() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
   const pathname = usePathname();
+  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const userData = await getCurrentUser();
+        setCurrentUser(userData);
+      } catch (error) {
+        console.error("Error loading user:", error);
+        setCurrentUser(null);
+      } finally {
+        setIsLoadingUser(false);
+      }
+    };
+
+    if (user) {
+      loadUser();
+    } else {
+      setIsLoadingUser(false);
+    }
+  }, [user]);
 
   const handleSignOut = async () => {
     try {
@@ -19,15 +43,17 @@ export default function Sidebar() {
     }
   };
 
+  const isAdmin = currentUser?.role === 'admin';
+
   const navigateLinks = [
     { name: "Browse All", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", href: "/home" },
     { name: "Favorites", icon: "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z", href: "/favorites" },
     { name: "Saved Searches", icon: "M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z", href: "/saved-searches" },
     { name: "Rental History", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", href: "/rental-history" },
-    { name: "List Item", icon: "M12 4v16m8-8H4", href: "/list-item" },
-    { name: "Bulk Edit Items", icon: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z", href: "/bulk-edit" },
+    { name: "List Item", icon: "M12 4v16m8-8H4", href: "/add-item" },
+    { name: "Bulk Edit Items", icon: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z", href: "/bulk-edit-items" },
     { name: "My Profile", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", href: "/profile" },
-    { name: "My Conversations", icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z", href: "/conversations" },
+    { name: "My Conversations", icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z", href: "/request" },
     { name: "Disputes", icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z", href: "/disputes" },
   ];
 
@@ -124,33 +150,45 @@ export default function Sidebar() {
             </nav>
           </div>
 
-          {/* Admin Section */}
-          <div className="px-6 mb-6">
-            <nav className="space-y-2">
-              {adminLinks.map((link) => (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
-                >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d={link.icon}
-                    />
-                  </svg>
-                  <span>{link.name}</span>
-                </Link>
-              ))}
-            </nav>
-          </div>
+          {/* Admin Section - Only show for admin users */}
+          {!isLoadingUser && isAdmin && (
+            <div className="px-6 mb-6">
+              <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
+                ADMIN
+              </h2>
+              <nav className="space-y-1">
+                {adminLinks.map((link) => {
+                  const active = isActive(link.href);
+                  return (
+                    <Link
+                      key={link.name}
+                      href={link.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        active
+                          ? "bg-red-700 text-white"
+                          : "bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"
+                      }`}
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d={link.icon}
+                        />
+                      </svg>
+                      <span>{link.name}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+          )}
 
           {/* CATEGORIES Section */}
           <div className="px-6">
