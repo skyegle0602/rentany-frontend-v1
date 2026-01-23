@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Shield, CheckCircle, Clock, XCircle, Loader } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { type UserData, createVerificationSession } from '@/lib/api-client';
+import { type UserData, api } from '@/lib/api-client';
 
 export interface VerificationUser extends UserData {
   verification_status?: 'verified' | 'pending' | 'failed' | 'unverified';
@@ -15,27 +15,33 @@ interface VerificationPromptProps {
   message?: string;
 }
 
-export default function VerificationPrompt({ currentUser, message = "Verify your identity to unlock all features" }: VerificationPromptProps) {
+export default function VerificationPrompt({ currentUser, message = "Connect your payment account to unlock all features" }: VerificationPromptProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleVerify = async () => {
     setIsLoading(true);
     try {
-      const response = await createVerificationSession();
-      console.log('Verification session response:', response);
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      // Get the current path to redirect back after onboarding
+      const returnPath = typeof window !== 'undefined' ? window.location.pathname : '/add-item';
+      const response = await api.request<{ url: string }>('/stripe/connect/onboarding', {
+        method: 'POST',
+        body: JSON.stringify({ origin, return_path: returnPath }),
+      });
       
-      if (response && response.url) {
-        console.log('Redirecting to Stripe Identity:', response.url);
-        window.location.href = response.url;
+      if (response.success && response.data && response.data.url) {
+        console.log('Redirecting to Stripe Connect onboarding:', response.data.url);
+        // Redirect to Stripe Connect onboarding in the same window
+        window.location.href = response.data.url;
       } else {
         console.error('Invalid response structure:', response);
-        alert("Failed to get verification URL. Please try again.");
+        alert("Failed to get payment connection URL. Please try again.");
+        setIsLoading(false);
       }
     } catch (error) {
-      console.error("Error starting verification:", error);
+      console.error("Error starting payment connection:", error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Failed to start verification: ${errorMessage}. Please try again.`);
-    } finally {
+      alert(`Failed to start payment connection: ${errorMessage}. Please try again.`);
       setIsLoading(false);
     }
   };
@@ -84,7 +90,7 @@ export default function VerificationPrompt({ currentUser, message = "Verify your
       {currentUser?.verification_status === 'pending' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">
-            Your verification is being processed. This usually takes a few minutes. Please check back soon.
+            Your payment connection is being processed. This usually takes a few minutes. Please check back soon.
           </p>
         </div>
       )}
@@ -92,7 +98,7 @@ export default function VerificationPrompt({ currentUser, message = "Verify your
       {currentUser?.verification_status === 'failed' && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-sm text-red-800 mb-3">
-            Your verification was unsuccessful. Please try again with a valid government-issued ID.
+            Your payment connection was unsuccessful. Please try again.
           </p>
           <Button
             onClick={handleVerify}
@@ -102,7 +108,7 @@ export default function VerificationPrompt({ currentUser, message = "Verify your
             {isLoading ? (
               <>
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
-                Starting Verification...
+                Connecting Payment...
               </>
             ) : (
               <>
@@ -123,19 +129,19 @@ export default function VerificationPrompt({ currentUser, message = "Verify your
           {isLoading ? (
             <>
               <Loader className="w-4 h-4 mr-2 animate-spin" />
-              Starting Verification...
+              Connecting Payment...
             </>
           ) : (
             <>
               <Shield className="w-4 h-4 mr-2" />
-              Verify Identity
+              Verify Payment
             </>
           )}
         </Button>
       )}
 
       <p className="text-xs text-slate-500 text-center">
-        We use Stripe Identity to securely verify your identity. Your documents are encrypted and never stored by us.
+        We use Stripe to securely process payments. Your payment information is encrypted and securely handled by Stripe.
       </p>
     </div>
   );

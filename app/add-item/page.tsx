@@ -296,14 +296,14 @@ export default function AddItemPage() {
         <Card className="p-6 sm:p-8 max-w-md w-full">
           <div className="text-center mb-6">
             <Shield className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-            <h2 className="text-xl sm:text-2xl font-bold mb-2">Identity Verification Required</h2>
+            <h2 className="text-xl sm:text-2xl font-bold mb-2">Payment Connection Required</h2>
             <p className="text-slate-600 text-sm mb-4">
-              To maintain a safe marketplace, you must verify your identity before listing items.
+              To maintain a safe marketplace, you must connect your payment account before listing items.
             </p>
           </div>
           <VerificationPrompt 
             currentUser={user}
-            message="Complete identity verification to start listing your items"
+            message="Complete payment connection to start listing your items"
           />
           <div className="mt-4 text-center">
             <Link href={createPageUrl("Profile")}>
