@@ -71,10 +71,32 @@ export default function WalletOverview() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('stripe') === 'success') {
-        // Reload wallet data
+        // Check Stripe account status to update verification immediately
+        const checkStripeStatus = async () => {
+          try {
+            console.log('🔄 Checking Stripe account status after onboarding...');
+            const statusResponse = await api.request('/stripe/connect/status');
+            if (statusResponse.success && statusResponse.data) {
+              console.log('✅ Stripe account status:', statusResponse.data);
+              // Reload wallet data to get updated user info
+              await loadWalletData();
+            } else {
+              console.error('❌ Failed to check Stripe status:', statusResponse.error);
+              // Still reload wallet data even if status check fails
+              await loadWalletData();
+            }
+          } catch (error) {
+            console.error('❌ Error checking Stripe status:', error);
+            // Still reload wallet data even if status check fails
+            await loadWalletData();
+          }
+        };
+        
+        // Wait a moment for Stripe webhook to process, then check status
         setTimeout(() => {
-          loadWalletData();
-        }, 1000);
+          checkStripeStatus();
+        }, 2000);
+        
         // Clean up URL
         window.history.replaceState({}, '', window.location.pathname);
       }

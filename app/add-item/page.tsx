@@ -92,6 +92,41 @@ export default function AddItemPage() {
 
   useEffect(() => {
     loadUserData();
+
+    // Handle Stripe Connect return from onboarding
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('stripe') === 'success') {
+        // Check Stripe account status to update verification immediately
+        const checkStripeStatus = async () => {
+          try {
+            console.log('🔄 Checking Stripe account status after onboarding...');
+            const statusResponse = await api.request('/stripe/connect/status');
+            if (statusResponse.success && statusResponse.data) {
+              console.log('✅ Stripe account status:', statusResponse.data);
+              // Reload user data to get updated verification status
+              await loadUserData();
+            } else {
+              console.error('❌ Failed to check Stripe status:', statusResponse.error);
+              // Still reload user data even if status check fails
+              await loadUserData();
+            }
+          } catch (error) {
+            console.error('❌ Error checking Stripe status:', error);
+            // Still reload user data even if status check fails
+            await loadUserData();
+          }
+        };
+        
+        // Wait a moment for Stripe webhook to process, then check status
+        setTimeout(() => {
+          checkStripeStatus();
+        }, 2000);
+        
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
   }, []);
 
   const handleInputChange = (field: keyof typeof formData, value: string | boolean | string[]) => {
@@ -844,7 +879,7 @@ export default function AddItemPage() {
                   <Button
                     type="button"
                     onClick={() => setCurrentStep(prev => prev + 1)}
-                    className="ml-auto px-6 h-12 bg-slate-900 hover:bg-slate-800 rounded-xl"
+                    className="ml-auto px-6 h-12 bg-blue-600 rounded-xl"
                     disabled={
                       (currentStep === 1 && (!formData.title || !formData.description || !formData.category || !formData.location)) ||
                       (currentStep === 2 && uploadedImages.length === 0 && uploadedVideos.length === 0)
