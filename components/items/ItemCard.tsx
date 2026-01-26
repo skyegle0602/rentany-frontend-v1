@@ -115,6 +115,15 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
                 onError={(e) => {
                   // If image fails to load, hide it and show "No image" message
                   const target = e.target as HTMLImageElement
+                  const imageUrl = target.src
+                  
+                  // Log error for debugging
+                  if (process.env.NODE_ENV === 'development') {
+                    console.error('❌ Image failed to load:', imageUrl)
+                    console.error('   This is likely an S3 bucket permissions or CORS issue')
+                    console.error('   Check: 1) Bucket public access, 2) CORS configuration, 3) Bucket policy')
+                  }
+                  
                   target.style.display = 'none'
                   const parent = target.parentElement
                   if (parent && !parent.querySelector('.no-image-message')) {
@@ -123,6 +132,7 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
                     messageDiv.innerHTML = `
                       <div class="text-center p-4">
                         <p class="text-slate-500 text-sm">Image failed to load</p>
+                        ${process.env.NODE_ENV === 'development' ? `<p class="text-slate-400 text-xs mt-1">Check S3 bucket permissions</p>` : ''}
                       </div>
                     `
                     parent.appendChild(messageDiv)

@@ -127,8 +127,10 @@ class ApiClient {
       })
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'File upload failed' }))
-        throw new Error(error.message || `HTTP error! status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({ error: 'File upload failed' }))
+        // Backend returns { success: false, error: "..." }
+        const errorMessage = errorData.error || errorData.message || `HTTP error! status: ${response.status}`
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
