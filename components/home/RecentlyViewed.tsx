@@ -55,8 +55,16 @@ export default function RecentlyViewed({ onFavoriteChange }: RecentlyViewedProps
 
       // Fetch viewed items from API
       console.log('📊 Fetching viewed items for user:', userEmail);
-      const viewedItems = await getViewedItems(userEmail);
-      console.log('📊 Received viewed items:', viewedItems);
+      let viewedItems: any[] = []
+      try {
+        viewedItems = await getViewedItems(userEmail)
+        console.log('📊 Received viewed items:', viewedItems);
+      } catch (error) {
+        // getViewedItems already handles errors and returns empty array
+        // But log if there's an unexpected error
+        console.warn('⚠️  Could not fetch viewed items (this is OK if backend is not available):', error);
+        viewedItems = []
+      }
       
       // Sort by viewed_date (most recent first) and limit to 4
       const sortedViewedItems = viewedItems

@@ -5,6 +5,14 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
+// Log API base URL in development to help debug configuration issues
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('🔧 API Base URL:', API_BASE)
+  if (!process.env.NEXT_PUBLIC_API_URL) {
+    console.warn('⚠️  NEXT_PUBLIC_API_URL not set, using default:', API_BASE)
+  }
+}
+
 interface ApiResponse<T> {
   success: boolean
   data?: T
@@ -67,7 +75,14 @@ class ApiClient {
         ...options.headers,
       }
 
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const url = `${API_BASE}${endpoint}`
+      
+      // Log the request URL in development for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`)
+      }
+      
+      const response = await fetch(url, {
         ...options,
         method: options.method || 'GET',
         headers,
@@ -106,10 +121,33 @@ class ApiClient {
         data: data.data || data,
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const isNetworkError = errorMessage.includes('Failed to fetch') || 
+                            errorMessage.includes('NetworkError') ||
+                            errorMessage.includes('Network request failed')
+      
+      // Provide more helpful error messages
+      let userFriendlyError = 'Network error - Could not connect to server'
+      if (isNetworkError) {
+        userFriendlyError = `Cannot connect to backend server. Please check:
+1. Backend server is running (${API_BASE})
+2. CORS is configured correctly
+3. Network connectivity is available`
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ Network error details:', {
+            error: errorMessage,
+            url: `${API_BASE}${endpoint}`,
+            apiBase: API_BASE,
+            endpoint: endpoint,
+          })
+        }
+      }
+      
       console.error('API request error:', error)
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error - Could not connect to server',
+        error: userFriendlyError,
       }
     }
   }
