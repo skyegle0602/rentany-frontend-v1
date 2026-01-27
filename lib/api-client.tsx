@@ -3,13 +3,41 @@
  * Replaces Base44 SDK with REST API calls
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+// Get API base URL from environment variable
+// In Next.js, NEXT_PUBLIC_* variables are embedded at build time
+let API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
-// Log API base URL in development to help debug configuration issues
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+// Validate and clean the API_BASE URL
+// Remove any accidental variable name prefixes (e.g., "NEXT_PUBLIC_API_URL=")
+if (API_BASE.includes('NEXT_PUBLIC_API_URL=')) {
+  console.error('❌ Invalid API_BASE detected - environment variable may be set incorrectly')
+  console.error('   Current value:', API_BASE)
+  console.error('   This usually means NEXT_PUBLIC_API_URL was set with the variable name included')
+  // Try to extract the actual URL
+  const match = API_BASE.match(/NEXT_PUBLIC_API_URL=(.+)/)
+  if (match && match[1]) {
+    API_BASE = match[1].trim()
+    console.warn('   Extracted URL:', API_BASE)
+  } else {
+    // Fallback to default
+    API_BASE = 'http://localhost:5000/api'
+    console.warn('   Using fallback:', API_BASE)
+  }
+}
+
+// Ensure API_BASE doesn't have trailing slash
+API_BASE = API_BASE.replace(/\/+$/, '')
+
+// Log API base URL to help debug (always log in browser console)
+if (typeof window !== 'undefined') {
   console.log('🔧 API Base URL:', API_BASE)
-  if (!process.env.NEXT_PUBLIC_API_URL) {
-    console.warn('⚠️  NEXT_PUBLIC_API_URL not set, using default:', API_BASE)
+  if (!process.env.NEXT_PUBLIC_API_URL || API_BASE === 'http://localhost:5000/api') {
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      console.error('⚠️  NEXT_PUBLIC_API_URL not set correctly in production!')
+      console.error('   Current hostname:', window.location.hostname)
+      console.error('   Using fallback URL:', API_BASE)
+      console.error('   Please set NEXT_PUBLIC_API_URL in Vercel environment variables')
+    }
   }
 }
 
