@@ -14,11 +14,12 @@ export default function LayoutWrapper({
   const { isSignedIn, isLoaded } = useAuth();
   const pathname = usePathname();
 
-  // Check if current route is an auth route
+  // Check if current route is an auth route or onboarding
   const isAuthRoute = pathname?.startsWith("/auth");
+  const isOnboardingRoute = pathname === "/onboarding";
 
-  // Show sidebar and header only for authenticated users on non-auth routes
-  const showSidebar = isLoaded && isSignedIn && !isAuthRoute;
+  // Show sidebar and header only for authenticated users on non-auth routes (excluding onboarding)
+  const showSidebar = isLoaded && isSignedIn && !isAuthRoute && !isOnboardingRoute;
 
   if (!isLoaded) {
     return <div className="min-h-screen">{children}</div>;

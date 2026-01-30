@@ -117,22 +117,37 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
                   const target = e.target as HTMLImageElement
                   const imageUrl = target.src
                   
+                  // Check if this is an S3 URL
+                  const isS3Url = imageUrl.includes('amazonaws.com') || imageUrl.includes('s3.')
+                  const isUnsplashUrl = imageUrl.includes('unsplash.com')
+                  
                   // Log error for debugging
-                  if (process.env.NODE_ENV === 'development') {
-                    console.error('❌ Image failed to load:', imageUrl)
+                  // Only log S3 errors (critical) and non-Unsplash errors
+                  // Unsplash images are fallbacks, so we don't need to log them
+                  if (isS3Url) {
+                    // S3 errors are critical - always log
+                    console.error('❌ S3 Image failed to load:', imageUrl)
                     console.error('   This is likely an S3 bucket permissions or CORS issue')
                     console.error('   Check: 1) Bucket public access, 2) CORS configuration, 3) Bucket policy')
+                  } else if (!isUnsplashUrl && process.env.NODE_ENV === 'development') {
+                    // Log non-S3, non-Unsplash errors in development only
+                    console.warn('⚠️  Image failed to load:', imageUrl)
+                    console.warn('   This could be a network issue or the image URL is invalid')
                   }
+                  // Silently handle Unsplash image failures (they're just fallbacks)
                   
                   target.style.display = 'none'
                   const parent = target.parentElement
                   if (parent && !parent.querySelector('.no-image-message')) {
                     const messageDiv = document.createElement('div')
                     messageDiv.className = 'no-image-message w-full h-full bg-slate-200 flex items-center justify-center'
+                    const helpText = isS3Url && process.env.NODE_ENV === 'development' 
+                      ? '<p class="text-slate-400 text-xs mt-1">Check S3 bucket permissions</p>'
+                      : ''
                     messageDiv.innerHTML = `
                       <div class="text-center p-4">
                         <p class="text-slate-500 text-sm">Image failed to load</p>
-                        ${process.env.NODE_ENV === 'development' ? `<p class="text-slate-400 text-xs mt-1">Check S3 bucket permissions</p>` : ''}
+                        ${helpText}
                       </div>
                     `
                     parent.appendChild(messageDiv)

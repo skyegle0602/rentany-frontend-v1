@@ -45,13 +45,13 @@ export default function SignUpPage() {
       // After creating, check the status
       const status = signUp.status;
 
-      // If signup is complete, activate session and redirect
+      // If signup is complete, activate session and redirect to onboarding
       if (status === "complete") {
         if (signUp.createdSessionId) {
           await setActive({ session: signUp.createdSessionId });
         }
         setLoading(false);
-        router.push("/home");
+        router.push("/onboarding");
         return;
       }
 
@@ -70,7 +70,7 @@ export default function SignUpPage() {
             try {
               await setActive({ session: signUp.createdSessionId });
               setLoading(false);
-              router.push("/home");
+              router.push("/onboarding");
               return;
             } catch (e) {
               console.error("Session activation error:", e);
@@ -87,7 +87,7 @@ export default function SignUpPage() {
         try {
           await setActive({ session: signUp.createdSessionId });
           setLoading(false);
-          router.push("/home");
+          router.push("/onboarding");
           return;
         } catch (activeError) {
           console.error("Error setting active session:", activeError);

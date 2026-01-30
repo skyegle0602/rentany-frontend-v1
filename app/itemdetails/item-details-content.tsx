@@ -49,7 +49,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createPageUrl } from "@/lib/utils";
 import { format, differenceInDays, parseISO } from "date-fns";
-import { api, getCurrentUser, redirectToSignIn, createItemAvailability, sendEmail } from '@/lib/api-client';
+import { api, getCurrentUser, redirectToSignIn, createItemAvailability, sendEmail, createViewedItem } from '@/lib/api-client';
 import ShareButtons from '@/components/items/ShareButtons';
 import SimilarItems from '@/components/items/SimilarItems';
 import AvailabilityCalendar from '@/components/calendar/AvailabilityCalendar';
@@ -214,31 +214,29 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
           setItem(itemData);
           setOwner(ownerData);
 
-          // Track viewed item
+          // Track viewed item for recently viewed items feature
           try {
             const user = await getCurrentUser();
             // Check if user is logged in before tracking view
             if (user && user.email) {
-              console.log('📊 Attempting to track view for item:', itemId, 'user:', user.email);
-              // Use POST endpoint which now handles upsert atomically
-              const response = await api.request('/viewed-items', {
-                method: 'POST',
-                body: JSON.stringify({
-                  user_email: user.email,
-                  item_id: itemId,
-                  viewed_date: new Date().toISOString(),
-                }),
+              console.log('📊 Tracking view for item:', itemId, 'user:', user.email);
+              // Use the helper function for consistency
+              const viewResponse = await createViewedItem({
+                user_email: user.email,
+                item_id: itemId,
+                viewed_date: new Date().toISOString(),
               });
-              if (response.success) {
-                console.log('✅ View tracked successfully for item:', itemId, 'Response:', response);
+              if (viewResponse.success) {
+                console.log('✅ View tracked successfully - item will appear in recently viewed');
               } else {
-                console.error('❌ Failed to track view:', response.error);
+                console.warn('⚠️ Failed to track view:', viewResponse.error);
               }
             } else {
-              console.log('⚠️ User not logged in, skipping view tracking');
+              console.log('ℹ️ User not logged in, skipping view tracking');
             }
           } catch (viewError) {
-            // User not logged in or error tracking view
+            // Silently handle view tracking errors (non-critical)
+            console.warn('⚠️ Error tracking view (non-critical):', viewError);
             console.error('❌ Error tracking view:', viewError);
           }
 

@@ -17,7 +17,9 @@ interface VerificationPromptProps {
 
 export default function VerificationPrompt({ currentUser, message = "Connect your payment account to unlock all features" }: VerificationPromptProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingRenter, setIsLoadingRenter] = useState(false);
 
+  // Handler for owner payment verification (Stripe Connect)
   const handleVerify = async () => {
     setIsLoading(true);
     try {
@@ -43,6 +45,35 @@ export default function VerificationPrompt({ currentUser, message = "Connect you
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       alert(`Failed to start payment connection: ${errorMessage}. Please try again.`);
       setIsLoading(false);
+    }
+  };
+
+  // Handler for renter payment connection (setting up payment method for card)
+  const handleConnectRenterPayment = async () => {
+    setIsLoadingRenter(true);
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      // Get the current path to redirect back after payment method setup
+      const returnPath = typeof window !== 'undefined' ? window.location.pathname : '/profile';
+      const response = await api.request<{ url: string; session_id?: string }>('/stripe/payment-method/setup', {
+        method: 'POST',
+        body: JSON.stringify({ origin, return_path: returnPath }),
+      });
+      
+      if (response.success && response.data && response.data.url) {
+        console.log('Redirecting to Stripe payment method setup:', response.data.url);
+        // Redirect to Stripe Checkout for payment method setup
+        window.location.href = response.data.url;
+      } else {
+        console.error('Invalid response structure:', response);
+        alert("Failed to get payment method setup URL. Please try again.");
+        setIsLoadingRenter(false);
+      }
+    } catch (error) {
+      console.error("Error starting payment method setup:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to start payment method setup: ${errorMessage}. Please try again.`);
+      setIsLoadingRenter(false);
     }
   };
 
@@ -120,24 +151,95 @@ export default function VerificationPrompt({ currentUser, message = "Connect you
         </div>
       )}
 
+      {/* For renters, check if payment method is connected */}
+      {currentUser?.intent === 'renter' && !(currentUser as any).stripe_payment_method_id && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-blue-800 mb-3">
+            Connect your card to make rental payments.
+          </p>
+        </div>
+      )}
+
       {(currentUser?.verification_status === 'unverified' || !currentUser?.verification_status) && (
-        <Button
-          onClick={handleVerify}
-          disabled={isLoading}
-          className="w-full bg-blue-600 hover:bg-blue-700 h-12"
-        >
-          {isLoading ? (
+        <div className="space-y-3">
+          {/* Show both buttons when intent is 'both' */}
+          {currentUser?.intent === 'both' ? (
             <>
-              <Loader className="w-4 h-4 mr-2 animate-spin" />
-              Connecting Payment...
+              <Button
+                onClick={handleConnectRenterPayment}
+                disabled={isLoadingRenter || (currentUser as any).stripe_payment_method_id}
+                className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+              >
+                {isLoadingRenter ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting Card...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    Connect Card
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleVerify}
+                disabled={isLoading || currentUser?.verification_status === 'verified'}
+                variant="outline"
+                className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 h-12"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting Bank...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    Connect Bank Account
+                  </>
+                )}
+              </Button>
             </>
           ) : (
-            <>
-              <Shield className="w-4 h-4 mr-2" />
-              Verify Payment
-            </>
+            /* Show single button for renter or owner */
+            <Button
+              onClick={currentUser?.intent === 'renter' ? handleConnectRenterPayment : handleVerify}
+              disabled={
+                currentUser?.intent === 'renter' 
+                  ? (isLoadingRenter || !!(currentUser as any).stripe_payment_method_id)
+                  : (isLoading || currentUser?.verification_status === 'verified')
+              }
+              className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+            >
+              {currentUser?.intent === 'renter' ? (
+                isLoadingRenter ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting Card...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    Connect Card
+                  </>
+                )
+              ) : (
+                isLoading ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting Bank...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    Connect Bank Account
+                  </>
+                )
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       )}
 
       <p className="text-xs text-slate-500 text-center">

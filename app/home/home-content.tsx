@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import HowItWorks from "@/components/home/HowItWorks";
 import RecentlyViewed from "@/components/home/RecentlyViewed";
@@ -10,6 +11,8 @@ import Testerminal from "@/components/home/Testerminal";
 import TrustBadges from "@/components/home/TrustBadge";
 import dynamic from "next/dynamic";
 import { useLanguage } from "@/components/language/LanguageContext";
+import { getCurrentUser, type UserData } from "@/lib/api-client";
+import { Loader2 } from "lucide-react";
 
 // Dynamically import ItemFilters to avoid SSR hydration issues with Radix UI Select
 const ItemFilters = dynamic(() => import("@/components/items/ItemFilters"), {
@@ -46,6 +49,28 @@ type ViewType = "list" | "map";
 
 export default function HomeContent() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const [checkingIntent, setCheckingIntent] = useState(true);
+  
+  // Check user intent on mount
+  useEffect(() => {
+    async function checkIntent() {
+      try {
+        const user = await getCurrentUser();
+        if (user && !user.intent) {
+          // User doesn't have intent set, redirect to onboarding
+          router.push("/onboarding");
+          return;
+        }
+        setCheckingIntent(false);
+      } catch (error) {
+        console.error("Error checking user intent:", error);
+        // On error, allow access (don't block user)
+        setCheckingIntent(false);
+      }
+    }
+    checkIntent();
+  }, [router]);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -70,6 +95,15 @@ export default function HomeContent() {
   const [sortBy, setSortBy] = useState<SortByType>("relevance");
   const [view, setView] = useState<ViewType>("list");
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Show loading while checking intent
+  if (checkingIntent) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -202,35 +202,47 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, onDateCh
           color: #1f2937 !important;
         }
 
-        /* Selected date - Yellow Background */
-        .availability-calendar .rdp-day_selected > button,
-        .availability-calendar .rdp-day_selected button,
-        .availability-calendar button[aria-selected="true"]:not([disabled]) {
-          background-color: #fef08a !important;
-          color: #1f2937 !important;
-          opacity: 1 !important;
-          font-weight: 600 !important;
-        }
-
-        /* Range start and end - Yellow Background */
+        /* Selected date range - Dark Blue/Black Background with White Text */
         .availability-calendar .rdp-day_range_start > button,
-        .availability-calendar .rdp-day_range_end > button {
-          background-color: #fef08a !important;
-          color: #1f2937 !important;
+        .availability-calendar .rdp-day_range_end > button,
+        .availability-calendar .rdp-day_range_start button,
+        .availability-calendar .rdp-day_range_end button {
+          background-color: #1e293b !important;
+          color: white !important;
           opacity: 1 !important;
           font-weight: 600 !important;
         }
 
-        /* Range middle - Yellow Background */
-        .availability-calendar .rdp-day_range_middle > button {
-          background-color: #fef08a !important;
-          color: #1f2937 !important;
+        /* Range middle - Dark Blue/Black Background with White Text */
+        .availability-calendar .rdp-day_range_middle > button,
+        .availability-calendar .rdp-day_range_middle button {
+          background-color: #1e293b !important;
+          color: white !important;
           opacity: 0.9 !important;
         }
 
-        /* Hover for available dates */
-        .availability-calendar .rdp-day:not(.rdp-day_disabled):not(.rdp-day_selected) > button:not([disabled]):hover {
-          background-color: #f3f4f6 !important;
+        /* Single selected date (when clicking) - Yellow Background (focused/hovered state) */
+        .availability-calendar .rdp-day_selected > button:not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle),
+        .availability-calendar .rdp-day_selected button:not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle),
+        .availability-calendar button[aria-selected="true"]:not([disabled]):not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle) {
+          background-color: #fef08a !important;
+          color: #1f2937 !important;
+          opacity: 1 !important;
+          font-weight: 600 !important;
+        }
+
+        /* Hover for available dates - Yellow Background (focused state) */
+        .availability-calendar .rdp-day:not(.rdp-day_disabled):not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle) > button:not([disabled]):hover {
+          background-color: #fef08a !important;
+          color: #1f2937 !important;
+        }
+
+        /* Hover for range dates - Keep dark background */
+        .availability-calendar .rdp-day_range_start > button:hover,
+        .availability-calendar .rdp-day_range_end > button:hover,
+        .availability-calendar .rdp-day_range_middle > button:hover {
+          background-color: #1e293b !important;
+          color: white !important;
         }
 
         /* Override default disabled styles */

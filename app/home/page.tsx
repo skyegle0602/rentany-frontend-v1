@@ -9,6 +9,8 @@ export default async function HomePage() {
     redirect("/auth/signin");
   }
 
+  // Note: Intent check is done client-side in HomeContent component
+  // to avoid blocking server-side rendering with API calls
   return <HomeContent />;
 }
 

@@ -70,6 +70,7 @@ export interface UserData {
   email: string;
   username?: string;
   verification_status?: 'verified' | 'pending' | 'failed' | 'unverified';
+  intent?: 'renter' | 'owner' | 'both'; // User's intended role on the platform
   [key: string]: any;
 }
 
@@ -717,4 +718,8 @@ export async function getViewedItems(userEmail: string): Promise<ViewedItemData[
     console.error('Error fetching viewed items:', error)
     return []
   }
+}
+
+export async function createViewedItem(data: { user_email: string; item_id: string; viewed_date?: string; view_count?: number }): Promise<ApiResponse<any>> {
+  return api.createViewedItem(data)
 }

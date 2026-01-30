@@ -5,6 +5,15 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getCurrentUser, type UserData } from "@/lib/api-client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Sidebar() {
   const { user } = useUser();
@@ -13,6 +22,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [showRenterAlert, setShowRenterAlert] = useState(false);
+  const [showEditItemAlert, setShowEditItemsAlert] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -45,6 +56,37 @@ export default function Sidebar() {
 
   const isAdmin = currentUser?.role === 'admin';
 
+  const handleListItemClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    // Check user intent
+    if (currentUser?.intent === 'renter') {
+      // Show alert modal for renters
+      setShowRenterAlert(true);
+    } else if (currentUser?.intent === 'owner' || currentUser?.intent === 'both') {
+      // Allow navigation for owners or both
+      router.push("/add-item");
+    } else {
+      // If intent is not set, allow navigation (fallback)
+      router.push("/add-item");
+    }
+  };
+
+  const handleEditItemClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    // Check user intent
+    if (currentUser?.intent === 'renter') {
+      // Show alert modal for renters
+      setShowEditItemsAlert(true);
+    } else if (currentUser?.intent === 'owner' || currentUser?.intent === 'both') {
+      // Allow navigation for owners or both
+      router.push("/bulk-edit-items");
+    } else {
+      // If intent is not set, allow navigation (fallback)
+      router.push("/bulk-edit-items");
+    }
+  };
   const navigateLinks = [
     { name: "Browse All", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", href: "/home" },
     { name: "Favorites", icon: "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z", href: "/favorites" },
@@ -120,6 +162,68 @@ export default function Sidebar() {
             <nav className="space-y-1">
               {navigateLinks.map((link) => {
                 const active = isActive(link.href);
+                
+                // Special handling for "List Item" - check intent
+                if (link.name === "List Item") {
+                  return (
+                    <button
+                      key={link.name}
+                      onClick={handleListItemClick}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left ${
+                        active
+                          ? "bg-blue-700 text-white"
+                          : "text-gray-900 hover:bg-gray-100"
+                      }`}
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d={link.icon}
+                        />
+                      </svg>
+                      <span>{link.name}</span>
+                    </button>
+                  );
+                }
+                
+                // Special handling for "Bulk Edit Items" - check intent
+                if (link.name === "Bulk Edit Items") {
+                  return (
+                    <button
+                      key={link.name}
+                      onClick={handleEditItemClick}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left ${
+                        active
+                          ? "bg-blue-700 text-white"
+                          : "text-gray-900 hover:bg-gray-100"
+                      }`}
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d={link.icon}
+                        />
+                      </svg>
+                      <span>{link.name}</span>
+                    </button>
+                  );
+                }
+                
+                // Regular links for other items
                 return (
                   <Link
                     key={link.name}
@@ -270,6 +374,39 @@ export default function Sidebar() {
           </button>
         </div>
       </div>
+
+      {/* Alert Modal for Renters */}
+      <AlertDialog open={showRenterAlert} onOpenChange={setShowRenterAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cannot List Items</AlertDialogTitle>
+            <AlertDialogDescription>
+              You can't list items. You can only rent items.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowRenterAlert(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Alert Modal for Renters */}
+      <AlertDialog open={showEditItemAlert} onOpenChange={setShowEditItemsAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cannot Edit Items</AlertDialogTitle>
+            <AlertDialogDescription>
+              You can't list items. You can only rent items.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowEditItemsAlert(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

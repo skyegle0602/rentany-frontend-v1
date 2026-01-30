@@ -218,7 +218,12 @@ function PublicProfilePageContent() {
                 <div className="text-center md:text-left flex-1">
                   <div className="flex items-center gap-3 justify-center md:justify-start mb-1">
                     <h1 className="text-3xl font-bold text-slate-900">{profileUser.full_name}</h1>
-                    <VerificationBadge status={profileUser.verification_status || 'unverified'} size="md" />
+                    <VerificationBadge 
+                      status={profileUser.verification_status || 'unverified'} 
+                      size="md" 
+                      userIntent={profileUser.intent}
+                      stripe_payment_method_id={(profileUser as any).stripe_payment_method_id}
+                    />
                     {/* IMPORTANT: Only show report menu if viewing someone else's profile */}
                     {currentUser && currentUser.email !== profileUser.email && (
                       <BlockReportMenu 

@@ -23,17 +23,13 @@ export const metadata: Metadata = {
   description: 'Welcome to Rentany',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
     <ClerkProvider
-      signUpFallbackRedirectUrl="/home"
-      signInFallbackRedirectUrl="/home"
-      afterSignUpUrl="/home"
-      afterSignInUrl="/home"
       appearance={{
         elements: {
           // HIDE ALL MODALS GLOBALLY

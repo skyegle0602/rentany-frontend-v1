@@ -40,6 +40,8 @@ export default function RecentlyViewed({ onFavoriteChange }: RecentlyViewedProps
       return;
     }
 
+    // Only show recently viewed items for the currently signed-in user
+    // This component should NOT be used on public profile pages
     if (!isSignedIn || !currentUser) {
       setIsLoading(false);
       return;
@@ -53,8 +55,9 @@ export default function RecentlyViewed({ onFavoriteChange }: RecentlyViewedProps
         return;
       }
 
-      // Fetch viewed items from API
-      console.log('📊 Fetching viewed items for user:', userEmail);
+      // Fetch viewed items from API - only for the current user
+      // Shows items the current user has viewed, regardless of who owns them
+      console.log('📊 Fetching viewed items for current user:', userEmail);
       let viewedItems: any[] = []
       try {
         viewedItems = await getViewedItems(userEmail)

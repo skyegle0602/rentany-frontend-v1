@@ -47,12 +47,20 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('items');
 
   useEffect(() => {
     loadUserData();
 
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
+      
+      // Handle tab parameter
+      const tabParam = urlParams.get('tab');
+      if (tabParam) {
+        setActiveTab(tabParam);
+      }
+      
       if (urlParams.get('verification') === 'complete') {
         const handleVerificationComplete = async () => {
           try {
@@ -70,9 +78,39 @@ export default function ProfilePage() {
       if (urlParams.get('stripe') === 'success') {
         // Switch to wallet tab if not already there
         const tab = urlParams.get('tab') || 'wallet';
+        setActiveTab('wallet');
         if (tab !== 'wallet') {
           window.history.replaceState({}, '', window.location.pathname + '?tab=wallet&stripe=success');
         }
+      }
+      
+      // Handle payment setup redirect
+      if (urlParams.get('setup') === 'payment') {
+        setActiveTab('wallet');
+      }
+      
+      // Handle payment method setup success - retrieve payment method
+      if (urlParams.get('payment_method') === 'success') {
+        const retrievePaymentMethod = async () => {
+          try {
+            console.log('Payment method setup completed, retrieving payment method...');
+            const response = await api.request('/stripe/payment-method/retrieve', {
+              method: 'POST',
+            });
+            if (response.success) {
+              console.log('✅ Payment method retrieved and saved');
+              // Reload user data to get updated payment method ID
+              await loadUserData();
+            } else {
+              console.warn('⚠️ Failed to retrieve payment method:', response.error);
+            }
+          } catch (error) {
+            console.error('Error retrieving payment method:', error);
+          }
+        };
+        retrievePaymentMethod();
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname + (urlParams.get('tab') ? `?tab=${urlParams.get('tab')}` : ''));
       }
     }
   }, []);
@@ -277,7 +315,12 @@ export default function ProfilePage() {
                   {/* Name and Verification Badge */}
                   <div className="flex flex-col items-center gap-2 mb-2">
                     <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">{user.full_name}</h1>
-                    <VerificationBadge status={user.verification_status || 'unverified'} size="md" />
+                    <VerificationBadge 
+                      status={user.verification_status || 'unverified'} 
+                      size="md" 
+                      userIntent={user.intent}
+                      stripe_payment_method_id={(user as any).stripe_payment_method_id}
+                    />
                   </div>
                   
                   {/* Username */}
@@ -328,7 +371,9 @@ export default function ProfilePage() {
         </motion.div>
 
         {/* Verification Prompt */}
-        {user.verification_status !== 'verified' && (
+        {/* Show for renters without payment method, or owners without verification */}
+        {((user.intent === 'renter' && !(user as any).stripe_payment_method_id) || 
+          (user.intent !== 'renter' && user.verification_status !== 'verified')) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -345,7 +390,7 @@ export default function ProfilePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Tabs defaultValue="items" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm sticky top-0 z-10">
               <CardHeader className="pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
                 <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto gap-1">
