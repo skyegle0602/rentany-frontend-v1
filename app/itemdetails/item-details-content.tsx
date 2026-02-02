@@ -109,6 +109,7 @@ interface UserType {
 interface RentalFormType {
   start_date: string;
   end_date: string;
+  selected_dates?: string[]; // For individual date selection
   message: string;
 }
 
@@ -129,6 +130,7 @@ interface SuccessDialogDataType {
 interface DateChangeType {
   start_date?: string;
   end_date?: string;
+  selected_dates?: string[]; // For individual date selection
 }
 
 const categoryColors: Record<string, string> = {
@@ -171,6 +173,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
   const [rentalForm, setRentalForm] = useState<RentalFormType>({
     start_date: "",
     end_date: "",
+    selected_dates: [],
     message: ""
   });
   const [rentalCosts, setRentalCosts] = useState<RentalCostsType>({ rentalCost: 0, platformFee: 0, totalCost: 0 });
@@ -293,20 +296,24 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
   }, [item]);
 
   useEffect(() => {
-    if (rentalForm.start_date && rentalForm.end_date && item) {
-      const days = differenceInDays(parseISO(rentalForm.end_date), parseISO(rentalForm.start_date)) + 1;
-      const minDays = item.min_rental_days || 1;
-      const baseCost = calculateRentalCost(Math.max(days, minDays));
-      const fee = baseCost * 0.15;
-      setRentalCosts({
-        rentalCost: baseCost,
-        platformFee: fee,
-        totalCost: baseCost + fee
-      });
-    } else {
-      setRentalCosts({ rentalCost: 0, platformFee: 0, totalCost: 0 });
+    if (item) {
+      // Only use individual dates
+      const days = rentalForm.selected_dates?.length || 0;
+      
+      if (days > 0) {
+        const minDays = item.min_rental_days || 1;
+        const baseCost = calculateRentalCost(Math.max(days, minDays));
+        const fee = baseCost * 0.15;
+        setRentalCosts({
+          rentalCost: baseCost,
+          platformFee: fee,
+          totalCost: baseCost + fee
+        });
+      } else {
+        setRentalCosts({ rentalCost: 0, platformFee: 0, totalCost: 0 });
+      }
     }
-  }, [rentalForm.start_date, rentalForm.end_date, item, calculateRentalCost]);
+  }, [rentalForm.selected_dates, item, calculateRentalCost]);
 
   const handleRentalFormChange = (field: keyof RentalFormType, value: string): void => {
     setRentalForm((prev) => ({
@@ -315,11 +322,15 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
     }));
   };
 
-  const handleDateChange = (dates: DateChangeType): void => {
+  const handleDateChange = (dates: { selected_dates: string[] }): void => {
+    // Only handle individual dates selection
+    const selectedDates = dates.selected_dates || [];
     setRentalForm((prev) => ({
       ...prev,
-      start_date: dates.start_date || "",
-      end_date: dates.end_date || ""
+      selected_dates: selectedDates,
+      // Calculate min/max dates for display purposes
+      start_date: selectedDates.length > 0 ? selectedDates[0] : "",
+      end_date: selectedDates.length > 0 ? selectedDates[selectedDates.length - 1] : ""
     }));
   };
 
@@ -385,21 +396,38 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       return;
     }
 
-    // Check verification status (admins are exempt)
-    if (currentUser.role !== 'admin' && currentUser.verification_status !== 'verified') {
-      alert("You must verify your identity before renting items.");
+    // Check if user is owner (cannot rent)
+    if (currentUser.intent === 'owner') {
+      alert("You need to switch your account type to Renter or Both to book items.");
+      return;
+    }
+
+    // Check payment method for renters and both (admins are exempt)
+    const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
+    const isRenterOrBoth = currentUser.intent === 'renter' || currentUser.intent === 'both';
+    
+    if (currentUser.role !== 'admin' && isRenterOrBoth && !hasPaymentMethod) {
+      alert("You must connect your card before renting items.");
       return;
     }
 
     setIsSubmittingRequest(true);
     try {
+      // Only use individual dates
+      const selectedDates = rentalForm.selected_dates || [];
+      
+      if (selectedDates.length === 0) {
+        alert("Please select at least one date.");
+        setIsSubmittingRequest(false);
+        return;
+      }
+      
       // First validate the dates are available
       const validationResponse = await api.request<{ available: boolean; verification_required?: boolean }>('/rental-requests/validate', {
         method: 'POST',
         body: JSON.stringify({
           item_id: item.id,
-          start_date: rentalForm.start_date,
-          end_date: rentalForm.end_date
+          selected_dates: selectedDates
         }),
       });
 
@@ -411,13 +439,18 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       }
 
       if (!validationResponse.data || !validationResponse.data.available) {
-        alert("Sorry, some or all of the selected dates are no longer available. Please select a different date range.");
+        alert("Sorry, some or all of the selected dates are no longer available. Please select different dates.");
         setIsSubmittingRequest(false);
-        setRentalForm({ start_date: "", end_date: "", message: "" });
+        setRentalForm({ start_date: "", end_date: "", selected_dates: [], message: "" });
         return;
       }
 
       const totalCost = rentalCosts.rentalCost;
+
+      // Calculate start_date and end_date from selected dates (for backend compatibility)
+      const sortedDates = [...selectedDates].sort();
+      const startDate = sortedDates[0];
+      const endDate = sortedDates[sortedDates.length - 1];
 
       // Check if item has instant booking enabled - set initial status accordingly
       const initialStatus = item.instant_booking ? "approved" : "pending";
@@ -428,8 +461,8 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         item_id: item.id,
         renter_email: currentUser.email,
         owner_email: item.created_by,
-        start_date: rentalForm.start_date,
-        end_date: rentalForm.end_date,
+        start_date: startDate,
+        end_date: endDate,
         total_amount: totalCost,
         message: rentalForm.message,
         status: initialStatus
@@ -442,13 +475,15 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       const request = requestResponse.data as { id: string; status: string };
       console.log('Created rental request:', request.id, 'with status:', request.status);
 
-      // Create availability block
-      await createItemAvailability({
-        item_id: item.id,
-        blocked_start_date: rentalForm.start_date,
-        blocked_end_date: rentalForm.end_date,
-        reason: 'rented',
-      } as any); // rental_request_id may be optional in the backend
+      // Create one availability block per individual date
+      await Promise.all(selectedDates.map(date => 
+        createItemAvailability({
+          item_id: item.id,
+          blocked_start_date: date,
+          blocked_end_date: date, // Same date for start and end
+          reason: 'rented',
+        } as any)
+      ));
 
       // Create initial message
       await api.sendMessage({
@@ -458,9 +493,17 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
 
       // Send email notifications
       try {
-        const startDate = format(parseISO(rentalForm.start_date), 'MMM d, yyyy');
-        const endDate = format(parseISO(rentalForm.end_date), 'MMM d, yyyy');
-        const days = differenceInDays(parseISO(rentalForm.end_date), parseISO(rentalForm.start_date)) + 1;
+        const startDateFormatted = format(parseISO(startDate), 'MMM d, yyyy');
+        const endDateFormatted = format(parseISO(endDate), 'MMM d, yyyy');
+        const days = selectedDates.length;
+        
+        // Format dates display for email
+        let datesDisplay: string;
+        if (selectedDates.length === 1) {
+          datesDisplay = format(parseISO(selectedDates[0]), 'MMM d, yyyy');
+        } else {
+          datesDisplay = `${startDateFormatted} to ${endDateFormatted} (${selectedDates.length} dates: ${selectedDates.map(d => format(parseISO(d), 'MMM d')).join(', ')})`;
+        }
 
         const renterReviewsResponse = await api.getReviews(undefined, currentUser.email);
         const renterReviews: Array<{ rating: number }> = renterReviewsResponse.success && renterReviewsResponse.data 
@@ -472,9 +515,11 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
           (renterReviews.reduce((sum: number, r: { rating: number }) => sum + r.rating, 0) / renterReviews.length).toFixed(1) :
           'No reviews yet';
 
-        const verificationBadge = currentUser.verification_status === 'verified' ?
-          '<span style="display: inline-block; background-color: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">✓ VERIFIED</span>' :
-          '<span style="display: inline-block; background-color: #94a3b8; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">Not Verified</span>';
+        // Renters/both must have card connected to submit request
+        // Owners can't send rental requests (they receive them)
+        // So anyone sending a request must have card connected
+        const verificationBadge = '<span style="display: inline-block; background-color: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">✓ CARD CONNECTED</span>';
+        const statusLabel = 'Payment Method';
 
         const renterInfo = createInfoBox({
           title: '👤 Renter Information',
@@ -482,7 +527,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
             { label: 'Name', value: currentUser.full_name || currentUser.email || 'Not set' },
             { label: 'Username', value: currentUser.username ? '@' + currentUser.username : 'Not set' },
             { label: 'Rating', value: averageRating + (renterReviews.length > 0 ? ' ⭐ (' + renterReviews.length + ' reviews)' : '') },
-            { label: 'Verification', value: verificationBadge || 'Not verified' }]
+            { label: statusLabel, value: verificationBadge }]
 
         });
 
@@ -490,7 +535,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
           title: '📅 Rental Details',
           items: [
             { label: 'Item', value: item.title },
-            { label: 'Dates', value: startDate + ' to ' + endDate + ' (' + days + ' days)' },
+            { label: 'Dates', value: datesDisplay + ' (' + days + ' day' + (days !== 1 ? 's' : '') + ')' },
             { label: 'Rental Amount', value: '$' + rentalCosts.rentalCost.toFixed(2) },
             { label: 'Your Payout (after 15% fee)', value: '$' + (rentalCosts.rentalCost * 0.85).toFixed(2) }],
 
@@ -542,18 +587,18 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       }
 
       // Store data for success dialog
-      const startDateFormatted = format(parseISO(rentalForm.start_date), 'MMM d, yyyy');
-      const endDateFormatted = format(parseISO(rentalForm.end_date), 'MMM d, yyyy');
+      const startDateFormatted = format(parseISO(startDate), 'MMM d, yyyy');
+      const endDateFormatted = format(parseISO(endDate), 'MMM d, yyyy');
       
       setSuccessDialogData({
         isInstantBooking: item.instant_booking || false,
         itemTitle: item.title,
-        startDate: startDateFormatted,
-        endDate: endDateFormatted,
+        startDate: `${selectedDates.length} date${selectedDates.length !== 1 ? 's' : ''}: ${selectedDates.map(d => format(parseISO(d), 'MMM d')).join(', ')}`,
+        endDate: '',
         totalAmount: rentalCosts.totalCost.toFixed(2)
       });
       
-      setRentalForm({ start_date: "", end_date: "", message: "" });
+      setRentalForm({ start_date: "", end_date: "", selected_dates: [], message: "" });
       setShowSuccessDialog(true);
     } catch (error) {
       console.error("Error submitting rental request:", error);
@@ -614,6 +659,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       </div>);
 
   }
+
 
   const defaultImage = "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop";
   const itemImages = (item.images || []).filter(Boolean);
@@ -952,49 +998,89 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
                 </Card>
               }
 
-              {/* Rental Section - Updated with verification check */}
+              {/* Rental Section - Updated with payment method check */}
               {item && item.availability && currentUser?.email !== item.created_by &&
                 <div className="space-y-6">
-                  {currentUser?.role !== 'admin' && currentUser?.verification_status !== 'verified' ?
-                    <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
-                      <CardContent className="p-6 text-center">
-                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <AlertCircle className="w-6 h-6 text-red-600" />
-                        </div>
-                        <h3 className="font-semibold text-slate-900 mb-2">{t('itemDetails.verificationRequired')}</h3>
-                        <p className="text-slate-600 mb-4">
-                          {t('itemDetails.verifyToRent')}
-                        </p>
-                        <VerificationPrompt
-                          currentUser={currentUser as VerificationUser | null}
-                          message={t('itemDetails.verifyIdentity')} />
+                  {(() => {
+                    // Check if user is owner (cannot rent)
+                    if (currentUser?.intent === 'owner') {
+                      return (
+                        <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
+                          <CardContent className="p-6 text-center">
+                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <AlertCircle className="w-6 h-6 text-slate-600" />
+                            </div>
+                            <h3 className="font-semibold text-slate-900 mb-2">Switch to Renter or Both to book</h3>
+                            <p className="text-slate-600 mb-4">
+                              You need to switch your account type to Renter or Both to book items.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
 
-                      </CardContent>
-                    </Card> :
+                    // For renters and both: check payment method ID
+                    const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
+                    const isRenterOrBoth = currentUser?.intent === 'renter' || currentUser?.intent === 'both';
+                    const isAdmin = currentUser?.role === 'admin';
 
-                    <>
-                      <AvailabilityCalendar itemId={item.id} onDateChange={handleDateChange} />
+                    // Show alert if no payment method (unless admin)
+                    if (!isAdmin && isRenterOrBoth && !hasPaymentMethod) {
+                      return (
+                        <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
+                          <CardContent className="p-6 text-center">
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <AlertCircle className="w-6 h-6 text-red-600" />
+                            </div>
+                            <h3 className="font-semibold text-slate-900 mb-2">Card Connection Required</h3>
+                            <p className="text-slate-600 mb-4">
+                              {t('itemDetails.verifyToRent')}
+                            </p>
+                            <div className="flex items-center justify-center gap-2 mb-4">
+                              <Badge className="bg-slate-100 text-slate-800 border-slate-200 border flex items-center gap-1">
+                                <Shield className="w-3 h-3" />
+                                Not connected
+                              </Badge>
+                            </div>
+                            <VerificationPrompt
+                              currentUser={currentUser as VerificationUser | null}
+                              message={t('itemDetails.verifyIdentity')} />
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+
+                     // Show calendar if payment method exists or is admin
+                     return (
+                       <>
+                         <AvailabilityCalendar 
+                           itemId={item.id} 
+                           selectionMode="multiple"
+                           onDateChange={handleDateChange} 
+                         />
 
                       <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
                         <CardHeader>
                           <CardTitle>{t('itemDetails.requestToRent')}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          {!rentalForm.start_date || !rentalForm.end_date ?
+                          {!rentalForm.selected_dates || rentalForm.selected_dates.length === 0 ? (
                             <div className="text-center py-4">
                               <p className="text-slate-600 font-medium">{t('itemDetails.selectDatesPrompt')}</p>
-                            </div> :
-
+                            </div>
+                          ) : (
                             <form onSubmit={handleSubmitRentalRequest} className="space-y-4">
                               <div className="bg-slate-50 rounded-lg p-4 space-y-2">
                                 <div className="flex justify-between items-center text-sm">
                                   <span className="text-slate-600">{t('itemDetails.rentalPeriod')}:</span>
                                   <span className="font-medium text-slate-800">
-                                    {format(parseISO(rentalForm.start_date), 'PPP')} to {format(parseISO(rentalForm.end_date), 'PPP')}
+                                    {rentalForm.selected_dates.length === 1 
+                                      ? format(parseISO(rentalForm.selected_dates[0]), 'PPP')
+                                      : `${rentalForm.selected_dates.length} dates: ${rentalForm.selected_dates.map(d => format(parseISO(d), 'MMM d')).join(', ')}`}
                                   </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
-                                  <span className="text-slate-600">{t('itemDetails.rentalCost')} ({differenceInDays(parseISO(rentalForm.end_date), parseISO(rentalForm.start_date)) + 1} {t('itemDetails.days')}):</span>
+                                  <span className="text-slate-600">{t('itemDetails.rentalCost')} ({rentalForm.selected_dates.length} {t('itemDetails.days')}):</span>
                                   <span className="font-medium text-slate-800">
                                     ${rentalCosts.rentalCost.toFixed(2)}
                                   </span>
@@ -1040,11 +1126,12 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
                                 }
                               </Button>
                             </form>
-                          }
+                          )}
                         </CardContent>
                       </Card>
                     </>
-                  }
+                    );
+                  })()}
                 </div>
               }
 

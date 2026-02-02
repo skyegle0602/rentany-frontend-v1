@@ -74,6 +74,40 @@ export default function VerificationBadge({
       );
     }
   }
+  // Handle owners - check verification_status
+  if (userIntent === 'both') {
+    if (status === 'verified') {
+      // Bank account is connected
+      return (
+        <Badge className={`bg-green-100 text-green-800 border-green-200 border flex items-center gap-1 ${textSize}`}>
+          <Building2 className={iconSize} />
+          Bank connected
+        </Badge>
+      );
+    } else if (status === 'pending') {
+      return (
+        <Badge className={`bg-yellow-100 text-yellow-800 border-yellow-200 border flex items-center gap-1 ${textSize}`}>
+          <Clock className={iconSize} />
+          Verification Pending
+        </Badge>
+      );
+    } else if (status === 'failed') {
+      return (
+        <Badge className={`bg-red-100 text-red-800 border-red-200 border flex items-center gap-1 ${textSize}`}>
+          <XCircle className={iconSize} />
+          Verification Failed
+        </Badge>
+      );
+    } else {
+      // Unverified - show "Setup Payout"
+      return (
+        <Badge className={`bg-slate-100 text-slate-800 border-slate-200 border flex items-center gap-1 ${textSize}`}>
+          <Building2 className={iconSize} />
+          Setup Payout
+        </Badge>
+      );
+    }
+  }
 
   // Fallback for users without intent or unknown status
   if (!status || status === 'unverified') return null;

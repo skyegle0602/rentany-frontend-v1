@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar as DayPicker } from '@/components/ui/calendar';
-import { format, differenceInDays, startOfMonth, addMonths } from 'date-fns';
+import { format, differenceInDays, startOfMonth, addMonths, addDays, endOfDay } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { DateRange } from 'react-day-picker';
+import { Calendar, X } from 'lucide-react';
+import type { Matcher } from 'react-day-picker';
 import { getItemAvailability, createItemAvailability, deleteItemAvailability } from '@/lib/api-client';
 
 interface BlockedRange {
@@ -27,13 +27,14 @@ interface AvailabilityItem {
 interface AvailabilityCalendarProps {
   itemId: string;
   isOwner?: boolean;
-  onDateChange?: (dates: { start_date: string; end_date: string }) => void;
+  selectionMode?: 'multiple'; // Multiple date selection
+  onDateChange?: (dates: { selected_dates: string[] }) => void;
 }
 
-export default function AvailabilityCalendar({ itemId, isOwner = false, onDateChange }: AvailabilityCalendarProps) {
+export default function AvailabilityCalendar({ itemId, isOwner = false, selectionMode = 'multiple', onDateChange }: AvailabilityCalendarProps) {
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
+  const [selectedDates, setSelectedDates] = useState<Date[]>([]); // For multiple date selection
   const [blockReason, setBlockReason] = useState<string>('personal_use');
   const [isBlocking, setIsBlocking] = useState<boolean>(false);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -59,27 +60,38 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, onDateCh
     loadAvailability();
   }, [loadAvailability]);
 
-  const handleSelect = (range: DateRange | undefined) => {
-    setSelectedRange(range);
-    if (onDateChange && range?.from && range?.to) {
-      onDateChange({ start_date: format(range.from, 'yyyy-MM-dd'), end_date: format(range.to, 'yyyy-MM-dd') });
-    } else if (onDateChange) {
-      onDateChange({ start_date: '', end_date: '' });
+  const handleMultipleSelect = (dates: Date[] | undefined) => {
+    // In multiple mode, react-day-picker passes an array of selected dates
+    const newDates = dates || [];
+    setSelectedDates(newDates);
+    
+    // Notify parent component
+    if (onDateChange) {
+      onDateChange({ selected_dates: newDates.map(d => format(d, 'yyyy-MM-dd')) });
     }
   };
 
   const handleBlockDates = async () => {
-    if (!selectedRange || !selectedRange.from || !selectedRange.to) return;
+    // Block each selected date individually
+    if (selectedDates.length === 0) return;
     setIsBlocking(true);
     try {
-      await createItemAvailability({
-        item_id: itemId,
-        blocked_start_date: format(selectedRange.from, 'yyyy-MM-dd'),
-        blocked_end_date: format(selectedRange.to, 'yyyy-MM-dd'),
-        reason: blockReason,
-      });
+      await Promise.all(selectedDates.map(date => {
+        // Set start to beginning of day and end to end of same day to block only that single day
+        // This ensures start < end (required by backend) while blocking only the selected day
+        const startOfDayDate = new Date(date);
+        startOfDayDate.setHours(0, 0, 0, 0);
+        const endOfDayDate = endOfDay(date);
+        
+        return createItemAvailability({
+          item_id: itemId,
+          blocked_start_date: startOfDayDate.toISOString(),
+          blocked_end_date: endOfDayDate.toISOString(),
+          reason: blockReason,
+        });
+      }));
       await loadAvailability();
-      setSelectedRange(undefined);
+      setSelectedDates([]);
     } catch (error) {
       console.error("Error blocking dates:", error);
     }
@@ -95,162 +107,60 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, onDateCh
     }
   };
 
-  const disabledDays = [{ before: new Date() }, ...blockedRanges];
-
-  // Footer text for each month
-  const getFooterText = () => {
-    if (selectedRange?.from) {
-      if (!selectedRange.to) {
-        return format(selectedRange.from, 'PPP');
-      } else if (selectedRange.to) {
-        const days = differenceInDays(selectedRange.to, selectedRange.from) + 1;
-        return `${format(selectedRange.from, 'PPP')}–${format(selectedRange.to, 'PPP')} (${days} days)`;
-      }
-    }
-    return "Please pick the first day.";
-  };
-
-  const firstMonth = currentMonth;
-  const secondMonth = addMonths(currentMonth, 1);
+  const disabledDays: Matcher[] = [{ before: new Date() }, ...blockedRanges];
 
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: `
-        /* Calendar grid styling */
-        .availability-calendar .rdp-month {
-          width: 100% !important;
-        }
-
-        /* Hide default navigation */
-        .availability-calendar .rdp-nav {
+        /* Navigation buttons positioning for 2 months */
+        /* Hide next button on first month, hide previous button on second month */
+        .rdp-months > .rdp-month:first-child .rdp-nav_button_next {
           display: none !important;
         }
-
-        /* Calendar table styling - ensure proper alignment */
-        .availability-calendar .rdp-table {
-          width: 100% !important;
-          border-collapse: collapse !important;
+        .rdp-months > .rdp-month:last-child .rdp-nav_button_previous {
+          display: none !important;
         }
-
-        /* Days of week headers - ensure equal width and alignment */
-        .availability-calendar .rdp-head_row {
-          display: flex !important;
-          width: 100% !important;
-          margin: 0 !important;
+        
+        /* Position previous button on first month (left side) */
+        .rdp-months > .rdp-month:first-child .rdp-nav_button_previous {
+          position: absolute !important;
+          left: 0.25rem !important;
         }
-
-        .availability-calendar .rdp-head_cell {
-          flex: 1 1 0% !important;
-          min-width: 0 !important;
-          text-align: center !important;
-          padding: 0.25rem 0 !important;
-          font-size: 0.8rem !important;
-          font-weight: normal !important;
-          color: #6b7280 !important;
+        
+        /* Position next button on second month (right side) */
+        .rdp-months > .rdp-month:last-child .rdp-nav_button_next {
+          position: absolute !important;
+          right: 0.25rem !important;
         }
-
-        /* Calendar rows - ensure equal width cells */
-        .availability-calendar .rdp-row {
-          display: flex !important;
-          width: 100% !important;
-          margin-top: 0.5rem !important;
+        
+        /* Disabled dates - Light red background */
+        .rdp-day_disabled button,
+        .rdp-day_disabled > button,
+        button[disabled] {
+          background-color:rgb(219, 108, 108) !important;
+          color:rgb(218, 28, 28) !important;
         }
-
-        .availability-calendar .rdp-cell {
-          flex: 1 1 0% !important;
-          min-width: 0 !important;
-          text-align: center !important;
-          padding: 0 !important;
-          position: relative !important;
-        }
-
-        /* Day buttons - ensure proper sizing and alignment */
-        .availability-calendar .rdp-day {
-          width: 100% !important;
-          height: 2rem !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          margin: 0 auto !important;
-        }
-
-        .availability-calendar .rdp-day button {
-          width: 100% !important;
-          height: 2rem !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          border-radius: 0.375rem !important;
-        }
-
-        /* Unavailable/Blocked dates - Light Red Background with Strikethrough */
-        .availability-calendar .rdp-day_disabled button,
-        .availability-calendar .rdp-day_disabled > button,
-        .availability-calendar button[disabled],
-        .availability-calendar .rdp button[disabled],
-        .availability-calendar .rdp-day button[disabled] {
-          background-color: #fee2e2 !important;
-          color: #991b1b !important;
-          text-decoration: line-through !important;
+        
+        /* Selected dates - Dark blue background */
+        .rdp-day_selected button,
+        .rdp-day_selected > button,
+        button[aria-selected="true"],
+        .rdp-day button[aria-selected="true"] {
+          background-color: #0f172a !important; /* slate-900 */
+          color: #f8fafc !important; /* slate-50 */
           opacity: 1 !important;
-          cursor: not-allowed !important;
+          border-color: #0f172a !important;
         }
-
-        /* Available dates - White Background with Black Text */
-        .availability-calendar .rdp-day:not(.rdp-day_disabled):not(.rdp-day_selected):not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle) > button:not([disabled]):not([aria-selected="true"]) {
-          background-color: white !important;
-          color: #1f2937 !important;
-        }
-
-        /* Selected date range - Dark Blue/Black Background with White Text */
-        .availability-calendar .rdp-day_range_start > button,
-        .availability-calendar .rdp-day_range_end > button,
-        .availability-calendar .rdp-day_range_start button,
-        .availability-calendar .rdp-day_range_end button {
-          background-color: #1e293b !important;
-          color: white !important;
-          opacity: 1 !important;
-          font-weight: 600 !important;
-        }
-
-        /* Range middle - Dark Blue/Black Background with White Text */
-        .availability-calendar .rdp-day_range_middle > button,
-        .availability-calendar .rdp-day_range_middle button {
-          background-color: #1e293b !important;
-          color: white !important;
-          opacity: 0.9 !important;
-        }
-
-        /* Single selected date (when clicking) - Yellow Background (focused/hovered state) */
-        .availability-calendar .rdp-day_selected > button:not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle),
-        .availability-calendar .rdp-day_selected button:not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle),
-        .availability-calendar button[aria-selected="true"]:not([disabled]):not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle) {
-          background-color: #fef08a !important;
-          color: #1f2937 !important;
-          opacity: 1 !important;
-          font-weight: 600 !important;
-        }
-
-        /* Hover for available dates - Yellow Background (focused state) */
-        .availability-calendar .rdp-day:not(.rdp-day_disabled):not(.rdp-day_range_start):not(.rdp-day_range_end):not(.rdp-day_range_middle) > button:not([disabled]):hover {
-          background-color: #fef08a !important;
-          color: #1f2937 !important;
-        }
-
-        /* Hover for range dates - Keep dark background */
-        .availability-calendar .rdp-day_range_start > button:hover,
-        .availability-calendar .rdp-day_range_end > button:hover,
-        .availability-calendar .rdp-day_range_middle > button:hover {
-          background-color: #1e293b !important;
-          color: white !important;
-        }
-
-        /* Override default disabled styles */
-        .availability-calendar .rdp-day_disabled {
-          opacity: 1 !important;
+        
+        /* Ensure selected overrides disabled */
+        .rdp-day_disabled.rdp-day_selected button,
+        .rdp-day_disabled button[aria-selected="true"] {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #0f172a !important;
         }
       `}} />
-      <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm availability-calendar">
+      <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="w-5 h-5" />
@@ -259,101 +169,20 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, onDateCh
         </CardHeader>
         <CardContent className="flex flex-col md:flex-row gap-6">
           <div className="flex-grow">
-            <div className="grid grid-cols-2 gap-6">
-              {/* Left Column - First Month */}
-              <div className="flex flex-col space-y-0">
-                {/* Row 1: Previous Button + Month Name */}
-                <div className="flex items-center justify-between px-2 pb-2">
-                  <button
-                    onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
-                    className="h-8 w-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="text-sm font-semibold text-gray-900 flex-grow text-center">
-                    {format(firstMonth, 'MMMM yyyy')}
-                  </span>
-                  <div className="w-8" /> {/* Spacer for alignment */}
-                </div>
-                {/* Row 2: Calendar Grid */}
-                <DayPicker
-                  mode="range"
-                  selected={selectedRange}
-                  onSelect={handleSelect}
-                  disabled={disabledDays}
-                  month={firstMonth}
-                  numberOfMonths={1}
-                  className="w-full p-0"
-                  showOutsideDays={true}
-                  classNames={{
-                    month: "space-y-2",
-                    caption: "hidden", // Hide default caption
-                    table: "w-full",
-                    head_row: "flex w-full",
-                    head_cell: "flex-1 text-center text-xs text-gray-500 font-normal",
-                    row: "flex w-full mt-2",
-                    cell: "flex-1 text-center",
-                    day: "h-8 w-8 p-0",
-                    day_disabled: "availability-disabled",
-                    day_selected: "availability-selected",
-                    day_range_start: "availability-range-start",
-                    day_range_end: "availability-range-end",
-                    day_range_middle: "availability-range-middle",
-                  }}
-                />
-                {/* Row 3: Footer */}
-                <div className="pt-2">
-                  <p className="text-sm text-slate-500 p-2 text-center">{getFooterText()}</p>
-                </div>
-              </div>
-
-              {/* Right Column - Second Month */}
-              <div className="flex flex-col space-y-0">
-                {/* Row 1: Month Name + Next Button */}
-                <div className="flex items-center justify-between px-2 pb-2">
-                  <div className="w-8" /> {/* Spacer for alignment */}
-                  <span className="text-sm font-semibold text-gray-900 flex-grow text-center">
-                    {format(secondMonth, 'MMMM yyyy')}
-                  </span>
-                  <button
-                    onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                    className="h-8 w-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-                {/* Row 2: Calendar Grid */}
-                <DayPicker
-                  mode="range"
-                  selected={selectedRange}
-                  onSelect={handleSelect}
-                  disabled={disabledDays}
-                  month={secondMonth}
-                  numberOfMonths={1}
-                  className="w-full p-0"
-                  showOutsideDays={true}
-                  classNames={{
-                    month: "space-y-2",
-                    caption: "hidden", // Hide default caption
-                    table: "w-full",
-                    head_row: "flex w-full",
-                    head_cell: "flex-1 text-center text-xs text-gray-500 font-normal",
-                    row: "flex w-full mt-2",
-                    cell: "flex-1 text-center",
-                    day: "h-8 w-8 p-0",
-                    day_disabled: "availability-disabled",
-                    day_selected: "availability-selected",
-                    day_range_start: "availability-range-start",
-                    day_range_end: "availability-range-end",
-                    day_range_middle: "availability-range-middle",
-                  }}
-                />
-                {/* Row 3: Footer */}
-                <div className="pt-2">
-                  <p className="text-sm text-slate-500 p-2 text-center">{getFooterText()}</p>
-                </div>
-              </div>
-            </div>
+            
+              {/* Calendar Grid */}
+              <DayPicker
+                mode="multiple"
+                selected={selectedDates}
+                onSelect={handleMultipleSelect}
+                disabled={disabledDays}
+                month={currentMonth}
+                onMonthChange={setCurrentMonth}
+                numberOfMonths={2}
+                className="w-full"
+                showOutsideDays={true}
+              />
+            
           </div>
           {isOwner && (
             <div className="md:w-64 space-y-4 md:border-l md:pl-6">
@@ -373,8 +202,12 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, onDateCh
                     <option value="other">Other</option>
                   </select>
                 </div>
-                <Button onClick={handleBlockDates} disabled={!selectedRange || isBlocking} className="w-full mt-4">
-                  {isBlocking ? 'Blocking...' : 'Block Selected Dates'}
+                <Button 
+                  onClick={handleBlockDates} 
+                  disabled={selectedDates.length === 0 || isBlocking} 
+                  className="w-full mt-4"
+                >
+                  {isBlocking ? 'Blocking...' : `Block ${selectedDates.length} Date${selectedDates.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>
               

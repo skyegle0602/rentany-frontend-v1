@@ -127,9 +127,9 @@ export default function ProfilePage() {
         setAuthError("Your session has expired. Please sign in again.");
         redirectToSignIn();
         setIsLoading(false);
-        return;
-      }
-      
+      return;
+    }
+
       console.log('Current user:', currentUser);
       setUser(currentUser);
 
@@ -164,7 +164,7 @@ export default function ProfilePage() {
         console.log('User needs to set username');
         setShowUsernamePrompt(true);
         setIsLoading(false);
-        return;
+            return;
       } else {
         console.log('User has username:', currentUser.username);
         setShowUsernamePrompt(false);
@@ -180,7 +180,7 @@ export default function ProfilePage() {
         if (itemsResponse.success && itemsResponse.data) {
           const items = Array.isArray(itemsResponse.data) ? itemsResponse.data : [];
           setUserItems(items);
-        } else {
+          } else {
           setUserItems([]);
         }
       }
@@ -233,7 +233,7 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full" />
           <p className="text-slate-600 text-sm">Loading your profile...</p>
         </div>
       </div>
@@ -320,9 +320,9 @@ export default function ProfilePage() {
                       size="md" 
                       userIntent={user.intent}
                       stripe_payment_method_id={(user as any).stripe_payment_method_id}
-                    />
-                  </div>
-                  
+                          />
+                        </div>
+
                   {/* Username */}
                   <p className="text-slate-600 mb-3 font-mono text-sm">@{user.username}</p>
                   
@@ -340,12 +340,12 @@ export default function ProfilePage() {
                       <div className="flex items-center justify-center gap-1">
                         <div className="text-lg sm:text-2xl font-bold text-yellow-500">{averageRating.toFixed(1)}</div>
                         <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                      </div>
+                  </div>
                       <div className="text-xs text-slate-500">({totalReviews} reviews)</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
               {/* Action Buttons - Stacked on Mobile */}
               <div className="flex flex-col gap-2">
@@ -365,7 +365,7 @@ export default function ProfilePage() {
                   <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
                 </Button>
-              </div>
+                      </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -381,8 +381,8 @@ export default function ProfilePage() {
             className="mb-6"
           >
             <VerificationPrompt currentUser={user} />
-          </motion.div>
-        )}
+                </motion.div>
+              )}
 
         {/* Enhanced Tabs with New Sections */}
         <motion.div
@@ -442,7 +442,7 @@ export default function ProfilePage() {
                     <Link href={createPageUrl("AddItem")}>
                       <Button className="bg-slate-900 hover:bg-slate-800">
                         List Your First Item
-                      </Button>
+                  </Button>
                     </Link>
                   </CardContent>
                 </Card>
@@ -459,15 +459,15 @@ export default function ProfilePage() {
                   {reviews.map((review) => (
                     <ReviewCard key={review.id} review={review} />
                   ))}
-                </div>
+              </div>
               ) : (
                 <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm">
                   <CardContent className="text-center py-12 px-4">
                     <Star className="w-12 sm:w-16 h-12 sm:h-16 text-slate-400 mx-auto mb-4" />
                     <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">No reviews yet</h3>
                     <p className="text-sm text-slate-600">Complete rentals to receive reviews from others</p>
-                  </CardContent>
-                </Card>
+          </CardContent>
+        </Card>
               )}
             </TabsContent>
 
