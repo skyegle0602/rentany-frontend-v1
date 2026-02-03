@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Check, X, DollarSign } from 'lucide-react';
 import { format, parseISO, differenceInDays } from 'date-fns';
+import { createPageUrl } from "@/lib/utils";
 
 interface Extension {
   id: string;
@@ -96,7 +97,7 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
               </div>
               
               <p>Please complete the payment to confirm the extension.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin : ''}/Requests" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">Pay Now</a></p>
+              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">Pay Now</a></p>
             </div>
           `,
           from_name: "Rentable"
@@ -158,7 +159,7 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
               </div>
               
               <p>Please ensure you return the item by the original end date to avoid late fees.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin : ''}/Requests" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Rental</a></p>
+              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Rental</a></p>
             </div>
           `,
           from_name: "Rentable"

@@ -23,6 +23,7 @@ import StarRating from '../reviews/StarRating';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { createPageUrl } from "@/lib/utils";
 import DisputeForm from '../disputes/DisputeForm';
 import ConditionReportForm from './ConditionReportForm';
 import ConditionReportDisplay from './ConditionReportDisplay';
@@ -135,6 +136,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState(Date.now());
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasInitialLoadRef = useRef(false);
 
   // Check if user is actively using forms - if so, pause auto-refresh
   const isFormActive = showConditionForm || showDisputeForm || showExtensionForm || isTyping;
@@ -157,11 +159,10 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
       : request.renter_email;
     
     try {
-      // TODO: Implement getUserForChat endpoint in backend
-      const response = await api.request<UserData>(`/users?email=${otherEmail}`);
+      const response = await api.request<{ user: UserData }>(`/users/for-chat?email=${encodeURIComponent(otherEmail)}`);
       
-      if (response.success && response.data) {
-        setOtherUser(response.data);
+      if (response.success && response.data?.user) {
+        setOtherUser(response.data.user);
       } else {
         setOtherUser({ 
           email: otherEmail, 
@@ -381,6 +382,24 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
     }
   }, [request.id, currentUser.email]);
 
+  // Use refs to store latest function versions for intervals (after all functions are declared)
+  const loadAndReadMessagesRef = useRef(loadAndReadMessages);
+  const refreshRequestStatusRef = useRef(refreshRequestStatus);
+  const loadReviewsRef = useRef(loadReviews);
+  const loadConditionReportsRef = useRef(loadConditionReports);
+  const loadExtensionRequestsRef = useRef(loadExtensionRequests);
+  const checkTypingStatusRef = useRef(checkTypingStatus);
+  
+  // Update refs when functions change
+  useEffect(() => {
+    loadAndReadMessagesRef.current = loadAndReadMessages;
+    refreshRequestStatusRef.current = refreshRequestStatus;
+    loadReviewsRef.current = loadReviews;
+    loadConditionReportsRef.current = loadConditionReports;
+    loadExtensionRequestsRef.current = loadExtensionRequests;
+    checkTypingStatusRef.current = checkTypingStatus;
+  }, [loadAndReadMessages, refreshRequestStatus, loadReviews, loadConditionReports, loadExtensionRequests, checkTypingStatus]);
+
   // Manual refresh function (no longer exposed in header, but kept for potential internal use)
   const handleManualRefresh = async () => {
     if (isRateLimited) return;
@@ -401,27 +420,59 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   };
 
   useEffect(() => {
+    // Only run initial load once per component mount
+    if (hasInitialLoadRef.current) {
+      return;
+    }
+    
     const initialLoad = async () => {
+        hasInitialLoadRef.current = true;
         setIsLoading(true);
         
-        // Step 1: Load user
-        await fetchOtherUser();
-        await delay(1500); // Increased from 1000ms to 1500ms
-        
-        // Step 2: Load messages (most important)
-        await loadAndReadMessages(true);
-        await delay(1500); // Increased from 1000ms to 1500ms
-        
-        setIsLoading(false);
+        try {
+          // Step 1: Load user
+          try {
+            await fetchOtherUser();
+          } catch (error) {
+            console.error("Error fetching other user:", error);
+          }
+          await delay(1500);
+          
+          // Step 2: Load messages (most important)
+          try {
+            await loadAndReadMessages(true);
+          } catch (error) {
+            console.error("Error loading messages:", error);
+            // Set empty messages array if load fails
+            setMessages([]);
+          }
+          await delay(1500);
+        } finally {
+          // Always clear loading state, even if some requests fail
+          setIsLoading(false);
+        }
 
         // Step 3: Load everything else in background with increased delays
-        await loadReviews();
-        await delay(2000); // Increased from 1000ms to 2000ms
+        // These are non-critical, so we don't block on them
+        try {
+          await loadReviews();
+        } catch (error) {
+          console.error("Error loading reviews:", error);
+        }
+        await delay(2000);
         
-        await loadConditionReports();
-        await delay(2000); // Increased from 1000ms to 2000ms
+        try {
+          await loadConditionReports();
+        } catch (error) {
+          console.error("Error loading condition reports:", error);
+        }
+        await delay(2000);
         
-        await loadExtensionRequests();
+        try {
+          await loadExtensionRequests();
+        } catch (error) {
+          console.error("Error loading extension requests:", error);
+        }
     };
     initialLoad();
     
@@ -434,29 +485,30 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
       if (!isRateLimited) {
         console.log("🔄 Auto-refreshing data...");
-        await loadAndReadMessages(false);
+        await loadAndReadMessagesRef.current(false);
         await delay(3000); // Increased delay between calls
-        await refreshRequestStatus();
+        await refreshRequestStatusRef.current();
         await delay(3000);
-        await loadReviews();
+        await loadReviewsRef.current();
         await delay(3000);
-        await loadConditionReports();
+        await loadConditionReportsRef.current();
         await delay(3000);
-        await loadExtensionRequests();
+        await loadExtensionRequestsRef.current();
         console.log("✅ Auto-refresh complete");
       }
     }, 300000); // Changed from 120000 (2 min) to 300000 (5 min)
 
     // Typing indicator check - every 3 seconds
     const typingInterval = setInterval(() => {
-      checkTypingStatus();
+      checkTypingStatusRef.current();
     }, 3000);
 
     return () => {
       clearInterval(interval);
       clearInterval(typingInterval);
     };
-  }, [loadAndReadMessages, fetchOtherUser, loadReviews, loadConditionReports, loadExtensionRequests, refreshRequestStatus, isRateLimited, isFormActive, checkTypingStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - use refs for functions to avoid re-renders
 
   useEffect(() => {
     if (shouldScrollToBottom) {
@@ -526,7 +578,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
             type: 'message',
             title: `New message from ${currentUser.full_name || 'Someone'}`,
             message: newMessage.trim().substring(0, 100) || 'Sent an attachment',
-            link: '/Requests'
+            link: createPageUrl('Request')
           })
         });
       } catch (notifError) {
@@ -555,18 +607,8 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
         body: JSON.stringify({ status: 'approved' })
       });
       
-      if (item && currentRequest.start_date && currentRequest.end_date) {
-        await api.request('/item-availability', {
-          method: 'POST',
-          body: JSON.stringify({
-            item_id: item.id,
-            blocked_start_date: currentRequest.start_date,
-            blocked_end_date: currentRequest.end_date,
-            reason: 'rented',
-            rental_request_id: currentRequest.id,
-          })
-        });
-      }
+      // Note: Dates are automatically blocked by the backend when status changes to 'approved'
+      // No need to manually block dates here
 
       await api.request('/messages', {
         method: 'POST',
@@ -621,7 +663,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
                 </div>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="${window.location.origin}/Requests" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                  <a href="${window.location.origin}/request" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                     Complete Payment Now
                   </a>
                 </div>
@@ -740,13 +782,13 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
     setIsProcessingPayment(true);
     try {
       console.log('💳 Starting payment for rental request:', request.id);
-      console.log('📍 Return URL:', window.location.origin + '/Requests');
+      console.log('📍 Return URL:', window.location.origin + createPageUrl('Request'));
       
       const response = await api.request<{ url?: string; checkout_url?: string }>('/checkout', {
         method: 'POST',
         body: JSON.stringify({
           rental_request_id: request.id,
-          return_url: typeof window !== 'undefined' ? window.location.origin + '/Requests' : ''
+          return_url: typeof window !== 'undefined' ? window.location.origin + createPageUrl('Request') : ''
         })
       });
 

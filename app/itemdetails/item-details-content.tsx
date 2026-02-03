@@ -49,7 +49,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createPageUrl } from "@/lib/utils";
 import { format, differenceInDays, parseISO } from "date-fns";
-import { api, getCurrentUser, redirectToSignIn, createItemAvailability, sendEmail, createViewedItem } from '@/lib/api-client';
+import { api, getCurrentUser, redirectToSignIn, sendEmail, createViewedItem } from '@/lib/api-client';
 import ShareButtons from '@/components/items/ShareButtons';
 import SimilarItems from '@/components/items/SimilarItems';
 import AvailabilityCalendar from '@/components/calendar/AvailabilityCalendar';
@@ -375,7 +375,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
 
       setShowInquiryModal(false);
       setInquiryMessage("");
-      router.push(createPageUrl("Requests")); // Navigate to the requests/messages page
+      router.push(createPageUrl("Request")); // Navigate to the requests/messages page
     } catch (error) {
       console.error("Error sending inquiry:", error);
       alert("Failed to send your message. Please try again.");
@@ -423,20 +423,13 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       }
       
       // First validate the dates are available
-      const validationResponse = await api.request<{ available: boolean; verification_required?: boolean }>('/rental-requests/validate', {
+      const validationResponse = await api.request<{ available: boolean }>('/rental-requests/validate', {
         method: 'POST',
         body: JSON.stringify({
           item_id: item.id,
           selected_dates: selectedDates
         }),
       });
-
-      // Check if validation returned verification error
-      if (validationResponse.data?.verification_required) {
-        alert("You must verify your identity before renting items.");
-        setIsSubmittingRequest(false);
-        return;
-      }
 
       if (!validationResponse.data || !validationResponse.data.available) {
         alert("Sorry, some or all of the selected dates are no longer available. Please select different dates.");
@@ -449,22 +442,41 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
 
       // Calculate start_date and end_date from selected dates (for backend compatibility)
       const sortedDates = [...selectedDates].sort();
-      const startDate = sortedDates[0];
-      const endDate = sortedDates[sortedDates.length - 1];
+      // Ensure dates are in ISO string format for backend
+      const startDate = new Date(sortedDates[0]).toISOString();
+      const endDate = new Date(sortedDates[sortedDates.length - 1]).toISOString();
 
       // Check if item has instant booking enabled - set initial status accordingly
       const initialStatus = item.instant_booking ? "approved" : "pending";
       
+      // Get owner email - use owner.email if available, otherwise fallback to item.created_by
+      const ownerEmail = owner?.email || item.created_by;
+      console.log('Owner email: ', ownerEmail);
+      // Validate required fields
+      if (!item.id || !currentUser?.email || !ownerEmail || !startDate || !endDate || totalCost === undefined || totalCost === null) {
+        alert("Missing required information. Please ensure all fields are filled correctly.");
+        setIsSubmittingRequest(false);
+        return;
+      }
+      
       console.log('Creating rental request with status:', initialStatus, 'Instant booking:', item.instant_booking);
+      console.log('Request data:', {
+        item_id: item.id,
+        renter_email: currentUser.email,
+        owner_email: ownerEmail,
+        start_date: startDate,
+        end_date: endDate,
+        total_amount: totalCost
+      });
 
       const requestResponse = await api.createRentalRequest({
         item_id: item.id,
         renter_email: currentUser.email,
-        owner_email: item.created_by,
+        owner_email: ownerEmail,
         start_date: startDate,
         end_date: endDate,
         total_amount: totalCost,
-        message: rentalForm.message,
+        message: rentalForm.message || "",
         status: initialStatus
       });
 
@@ -475,15 +487,10 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       const request = requestResponse.data as { id: string; status: string };
       console.log('Created rental request:', request.id, 'with status:', request.status);
 
-      // Create one availability block per individual date
-      await Promise.all(selectedDates.map(date => 
-        createItemAvailability({
-          item_id: item.id,
-          blocked_start_date: date,
-          blocked_end_date: date, // Same date for start and end
-          reason: 'rented',
-        } as any)
-      ));
+      // Note: Dates will be automatically blocked by the backend when:
+      // 1. The rental request is approved by the owner, OR
+      // 2. If instant booking is enabled, dates are blocked when the request is created
+      // Renters cannot directly block dates - only owners/admins can
 
       // Create initial message
       await api.sendMessage({
@@ -570,7 +577,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
             </p>
           `,
           buttonText: item.instant_booking ? 'View Booking' : 'View Request',
-          buttonUrl: window.location.origin + createPageUrl('Requests'),
+          buttonUrl: window.location.origin + createPageUrl('Request'),
           footerText: 'Thank you for being part of the Rentable community!'
         });
 
@@ -1190,7 +1197,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
           totalAmount={successDialogData.totalAmount}
           onViewConversation={() => {
             setShowSuccessDialog(false);
-            window.location.href = createPageUrl("Requests");
+            router.push(createPageUrl("Request"));
           }}
         />
       )}

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Clock } from 'lucide-react';
 import { format, differenceInDays, parseISO, addDays } from 'date-fns';
+import { createPageUrl } from "@/lib/utils";
 
 interface ExtensionRequestProps {
   rentalRequest: {
@@ -104,7 +105,7 @@ export default function ExtensionRequest({ rentalRequest, item, onSuccess }: Ext
             title: '⏰ Extension Request',
             message: `${user.full_name || user.email} wants to extend their rental by ${extraDays} days`,
             related_id: rentalRequest.id,
-            link: '/Requests'
+            link: createPageUrl('Request')
           })
         });
       } catch (notificationError) {
@@ -132,7 +133,7 @@ export default function ExtensionRequest({ rentalRequest, item, onSuccess }: Ext
               ${message ? `<p><strong>Message from renter:</strong><br/>${message}</p>` : ''}
               
               <p>Please review this request in your conversations.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin : ''}/Requests" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Request</a></p>
+              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Request</a></p>
             </div>
           `,
           from_name: "Rentable"
