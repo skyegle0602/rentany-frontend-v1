@@ -137,7 +137,7 @@ export default function PayoutSettings() {
                       <li>7-day dispute resolution period after completion</li>
                       <li>Automatic payouts processed after dispute period</li>
                       <li>Funds typically arrive in 2-3 business days</li>
-                      <li>15% platform fee deducted from earnings</li>
+                      <li>15% platform fee is paid by the renter (not deducted from your payout)</li>
                     </ul>
                   </div>
                 </div>
@@ -237,7 +237,7 @@ export default function PayoutSettings() {
               </div>
               <div>
                 <p className="font-medium text-green-900 text-sm">Automatic Payout</p>
-                <p className="text-xs text-green-800 mt-1">Funds transferred to your bank account (85% of rental amount)</p>
+                  <p className="text-xs text-green-800 mt-1">Funds transferred to your bank account (rental cost)</p>
               </div>
             </div>
           </div>

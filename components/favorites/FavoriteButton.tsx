@@ -11,6 +11,7 @@ interface FavoriteButtonProps {
   currentUser?: UserData | null;
   onFavoriteChange?: () => void | Promise<void>;
   size?: "default" | "sm";
+  favoriteCount?: number;
 }
 
 export default function FavoriteButton({
@@ -18,7 +19,8 @@ export default function FavoriteButton({
   userFavorites = [],
   currentUser = null,
   onFavoriteChange,
-  size = "default"
+  size = "default",
+  favoriteCount = 0
 }: FavoriteButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -85,24 +87,37 @@ export default function FavoriteButton({
     }
   };
 
-  const buttonSize = size === "sm" ? "w-7 h-7" : "w-8 h-8";
   const iconSize = size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
+  const textSize = size === "sm" ? "text-xs" : "text-sm";
 
   return (
     <Button
       variant="ghost"
-      size="icon"
       onClick={handleToggleFavorite}
       disabled={isProcessing}
-      className={`${buttonSize} bg-white/90 hover:bg-white rounded-full shadow-md backdrop-blur-sm transition-all duration-200`}
+      className={`
+        h-8 px-3 rounded-full 
+        bg-white border border-slate-300 
+        hover:bg-slate-50 hover:border-slate-400
+        transition-all duration-200
+        flex items-center gap-2
+        shadow-sm
+        ${isFavorited ? 'border-red-300 bg-red-50' : ''}
+      `}
     >
       <Heart 
         className={`${iconSize} transition-all duration-200 ${
           isFavorited 
             ? 'fill-red-500 text-red-500' 
-            : 'text-slate-600 hover:text-red-500'
+            : 'text-slate-400 stroke-slate-400'
         }`}
+        strokeWidth={1.5}
       />
+      {favoriteCount > 0 && (
+        <span className={`${textSize} font-medium text-slate-400`}>
+          {favoriteCount}
+        </span>
+      )}
     </Button>
   );
 }

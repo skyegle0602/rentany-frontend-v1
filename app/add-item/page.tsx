@@ -21,6 +21,9 @@ import { geocodeLocation } from "@/lib/geocodeLocation";
 // Removed generateAIDescription import
 import VerificationPrompt from '@/components/verification/VerificationPrompt';
 import { getCurrentUser, type UserData, api, redirectToSignIn } from "@/lib/api-client";
+import { canLend } from "@/lib/user-capabilities";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 
 export default function AddItemPage() {
   const router = useRouter();
@@ -325,32 +328,8 @@ export default function AddItemPage() {
     );
   }
 
-  if (user.role !== 'admin' && user.verification_status !== 'verified') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-        <Card className="p-6 sm:p-8 max-w-md w-full">
-          <div className="text-center mb-6">
-            <Shield className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-            <h2 className="text-xl sm:text-2xl font-bold mb-2">Payment Connection Required</h2>
-            <p className="text-slate-600 text-sm mb-4">
-              To maintain a safe marketplace, you must connect your payment account before listing items.
-            </p>
-          </div>
-          <VerificationPrompt 
-            currentUser={user}
-            message="Complete payment connection to start listing your items"
-          />
-          <div className="mt-4 text-center">
-            <Link href={createPageUrl("Profile")}>
-              <Button variant="outline" className="w-full">
-                Go to Profile
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  // All users can list items - no requirement
+  // Capability: List items = allowed for everyone
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-3 sm:p-6">
@@ -365,10 +344,11 @@ export default function AddItemPage() {
               <h1 className="text-3xl font-bold text-slate-900 mb-2">List Your Item</h1>
               <p className="text-slate-600">Share your items with the community and start earning</p>
             </div>
-            {user?.verification_status === 'verified' && (
+            {/* Show payout setup status if bank account is connected */}
+            {user?.stripe_account_id && user?.payouts_enabled && (
               <Badge className="bg-green-100 text-green-800 border-green-200">
                 <Shield className="w-3 h-3 mr-1" />
-                Verified
+                Payouts Enabled
               </Badge>
             )}
           </div>
@@ -407,6 +387,26 @@ export default function AddItemPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Warning banner if bank account not connected */}
+        {user && !canLend(user, user.role === 'admin') && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Alert className="border-yellow-200 bg-yellow-50">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <AlertTitle className="text-yellow-900">Connect your bank account to receive payouts</AlertTitle>
+              <AlertDescription className="text-yellow-800 mt-1">
+                You can list items, but you won&apos;t be able to receive payments until you connect your bank account. 
+                <Link href={createPageUrl("Profile")} className="ml-1 underline font-medium hover:text-yellow-900">
+                  Connect now
+                </Link>
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
 
         <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
           <CardHeader className="border-b border-slate-100 pb-6">

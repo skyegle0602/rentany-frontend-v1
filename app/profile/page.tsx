@@ -10,8 +10,7 @@ import ItemCard from '@/components/items/ItemCard';
 import ReviewCard from '@/components/reviews/ReviewCard';
 import ProfilePictureUpload from '@/components/profile/ProfilePictureUpload';
 import UsernamePrompt from '@/components/profile/UsernamePrompt';
-import VerificationPrompt from '@/components/verification/VerificationPrompt';
-import VerificationBadge from '@/components/verification/VerificationBadge';
+import CapabilityPrompts from '@/components/profile/CapabilityPrompts';
 import Link from 'next/link';
 import { createPageUrl } from "@/lib/utils";
 import WalletOverview from '@/components/wallet/WalletOverview';
@@ -19,7 +18,7 @@ import AccountSettings from '@/components/profile/AccountSettings';
 import DocumentManager from '@/components/profile/DocumentManager';
 import RentalHistoryTab from '@/components/profile/RentalHistoryTab';
 import DisputeHistoryTab from '@/components/profile/DisputeHistoryTab';
-import { getCurrentUser, api, redirectToSignIn, sendEmail, type UserData } from '@/lib/api-client';
+import { getCurrentUser, api, redirectToSignIn, type UserData } from '@/lib/api-client';
 
 interface ItemType {
   id: string;
@@ -140,20 +139,10 @@ export default function ProfilePage() {
         const isNewUser = accountAge < 24 * 60 * 60 * 1000; // Less than 24 hours old
         
         if (!welcomeEmailSent && currentUser.username && isNewUser) {
-          try {
-            await sendEmail({
-              to: currentUser.email,
-              subject: 'Welcome to Rentany!',
-              body: `Hi ${currentUser.full_name || currentUser.username},\n\nWelcome to Rentany! We're excited to have you join our community.`
-            });
-            localStorage.setItem(`welcome_email_sent_${currentUser.email}`, 'true');
-            console.log('✅ Welcome email sent to new user');
-          } catch (emailError: unknown) {
-            // Silently mark as sent to prevent retries
-            localStorage.setItem(`welcome_email_sent_${currentUser.email}`, 'true');
-            const errorMessage = emailError instanceof Error ? emailError.message : 'Unknown error';
-            console.log('Welcome email skipped:', errorMessage);
-          }
+          // Welcome email removed - using in-app notifications instead
+          // Could create a welcome notification here if needed
+          localStorage.setItem(`welcome_email_sent_${currentUser.email}`, 'true');
+          console.log('✅ Welcome notification marked for new user');
         } else if (!welcomeEmailSent) {
           // Mark existing users as already sent to prevent future attempts
           localStorage.setItem(`welcome_email_sent_${currentUser.email}`, 'true');
@@ -312,15 +301,9 @@ export default function ProfilePage() {
                 
                 {/* User Info - Centered */}
                 <div className="text-center mt-3 w-full">
-                  {/* Name and Verification Badge */}
+                  {/* Name */}
                   <div className="flex flex-col items-center gap-2 mb-2">
                     <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">{user.full_name}</h1>
-                    <VerificationBadge 
-                      status={user.verification_status || 'unverified'} 
-                      size="md" 
-                      userIntent={user.intent}
-                      stripe_payment_method_id={(user as any).stripe_payment_method_id}
-                          />
                         </div>
 
                   {/* Username */}
@@ -349,13 +332,14 @@ export default function ProfilePage() {
 
               {/* Action Buttons - Stacked on Mobile */}
               <div className="flex flex-col gap-2">
-                <Link href={createPageUrl("AddItem")} className="w-full">
+                {/* All users can list items - capability determined by payment setup, not intent */}
+                <Link href={createPageUrl("add-item")} className="w-full">
                   <Button className="w-full bg-slate-900 hover:bg-slate-800 h-11 rounded-xl font-semibold text-sm">
                     List New Item
                   </Button>
                 </Link>
-                <Button
-                  variant="outline"
+                  <Button
+                    variant="outline"
                   onClick={async () => {
                     // Clerk handles logout via sign-out page
                     window.location.href = '/auth/signout';
@@ -364,25 +348,21 @@ export default function ProfilePage() {
                 >
                   <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
-                </Button>
+                  </Button>
                       </div>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Verification Prompt */}
-        {/* Show for renters without payment method, or owners without verification */}
-        {((user.intent === 'renter' && !(user as any).stripe_payment_method_id) || 
-          (user.intent !== 'renter' && user.verification_status !== 'verified')) && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="mb-6"
-          >
-            <VerificationPrompt currentUser={user} />
-                </motion.div>
-              )}
+        {/* Capability-Based Prompts */}
+        {/* Show separate prompts for rent and lend capabilities */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <CapabilityPrompts currentUser={user} isAdmin={user?.role === 'admin'} />
+        </motion.div>
 
         {/* Enhanced Tabs with New Sections */}
         <motion.div

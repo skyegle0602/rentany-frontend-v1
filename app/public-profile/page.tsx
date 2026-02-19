@@ -92,12 +92,14 @@ function PublicProfilePageContent() {
       }
       
       if (!user) {
-        // Try alternative: fetch all users and filter client-side (not ideal, but works)
-        const allUsersResponse = await api.request<UserData[]>('/users');
-        if (allUsersResponse.success && allUsersResponse.data) {
-          const allUsers = Array.isArray(allUsersResponse.data) ? allUsersResponse.data : [];
-          user = allUsers.find(u => u.username?.toLowerCase() === username.toLowerCase()) || null;
-        }
+        // User not found by username query - don't load all users as fallback (memory intensive)
+        // Instead, just show error
+        setError('User not found');
+        setProfileUser(null);
+        setUserItems([]);
+        setReviews([]);
+        setIsLoading(false);
+        return;
       }
       
       if (!user) {
@@ -221,7 +223,6 @@ function PublicProfilePageContent() {
                     <VerificationBadge 
                       status={profileUser.verification_status || 'unverified'} 
                       size="md" 
-                      userIntent={profileUser.intent}
                       stripe_payment_method_id={(profileUser as any).stripe_payment_method_id}
                     />
                     {/* IMPORTANT: Only show report menu if viewing someone else's profile */}

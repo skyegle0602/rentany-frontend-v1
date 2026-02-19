@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { uploadFile } from '@/lib/api-client';
+import { api } from '@/lib/api-client';
 
 interface Attachment {
   url: string;
@@ -39,7 +39,7 @@ export default function ChatAttachments({ onAttach, disabled }: ChatAttachmentsP
 
     try {
       const uploadPromises = files.map(async (file, index) => {
-        const result = await uploadFile(file);
+        const result = await api.uploadFile(file);
         setUploadProgress(Math.round(((index + 1) / files.length) * 100));
         
         return {

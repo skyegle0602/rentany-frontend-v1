@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser, useAuth } from '@clerk/nextjs';
 import ItemCard from '@/components/items/ItemCard';
-import { Star } from 'lucide-react';
+import { Star, Loader2 } from 'lucide-react';
 import { type FavoriteData, api, getFavorites } from '@/lib/api-client';
 
 interface AIIItemsProps {
@@ -49,135 +49,197 @@ export default function AIIItems({
   const [allItems, setAllItems] = useState<Item[]>([]);
   const [userFavorites, setUserFavorites] = useState<FavoriteData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const itemsPerPage = 20; // Load 20 items at a time
+  const observerTarget = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const loadItems = async () => {
+  // Build API parameters helper
+  const buildParams = useCallback((offset: number = 0) => {
+    const params: any = {
+      limit: itemsPerPage,
+      offset: offset,
+    }
+    
+    // Search by title/name
+    if (searchQuery && searchQuery.trim()) {
+      params.search = searchQuery.trim()
+    }
+    
+    // Filter by location
+    if (locationQuery && locationQuery.trim()) {
+      params.location = locationQuery.trim()
+    }
+    
+    // Filter by category
+    if (selectedCategory && selectedCategory !== 'all') {
+      params.category = selectedCategory
+    }
+    
+    // Filter by price range
+    if (priceRange.min) {
+      params.min_price = parseFloat(priceRange.min)
+    }
+    if (priceRange.max) {
+      params.max_price = parseFloat(priceRange.max)
+    }
+    
+    // Filter by availability
+    if (availabilityFilter === 'available') {
+      params.availability = true
+    } else if (availabilityFilter === 'unavailable') {
+      params.availability = false
+    }
+    
+    // Add sorting parameter
+    if (sortBy) {
+      params.sort_by = sortBy
+    }
+    
+    return params;
+  }, [searchQuery, locationQuery, selectedCategory, priceRange.min, priceRange.max, availabilityFilter, sortBy]);
+
+  // Load items function
+  const loadItems = useCallback(async (offset: number = 0, append: boolean = false) => {
+    if (append) {
+      setIsLoadingMore(true);
+    } else {
       setIsLoading(true);
-      try {
-        // Only fetch on client side
-        if (typeof window === 'undefined') {
-          setIsLoading(false);
-          return;
-        }
+    }
 
-        // Build API parameters from filters
-        const params: any = {}
-        
-        // Search by title/name
-        if (searchQuery && searchQuery.trim()) {
-          params.search = searchQuery.trim()
-        }
-        
-        // Filter by location
-        if (locationQuery && locationQuery.trim()) {
-          params.location = locationQuery.trim()
-        }
-        
-        // Filter by category
-        if (selectedCategory && selectedCategory !== 'all') {
-          params.category = selectedCategory
-        }
-        
-        // Filter by price range
-        if (priceRange.min) {
-          params.min_price = parseFloat(priceRange.min)
-        }
-        if (priceRange.max) {
-          params.max_price = parseFloat(priceRange.max)
-        }
-        
-        // Filter by availability
-        if (availabilityFilter === 'available') {
-          params.availability = true
-        } else if (availabilityFilter === 'unavailable') {
-          params.availability = false
-        }
-        
-        // Add sorting parameter
-        if (sortBy) {
-          params.sort_by = sortBy
-        }
+    try {
+      // Only fetch on client side
+      if (typeof window === 'undefined') {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        return;
+      }
 
-        // Fetch items from API with filters
-        const response = await api.getItems(params);
+      const params = buildParams(offset);
+      const response = await api.getItems(params);
 
-        if (response.success && response.data) {
-          // Ensure data is an array
-          const itemsData = Array.isArray(response.data) ? response.data : []
-          
-          // Map API response to Item format
-          const items: Item[] = itemsData.map((item: any) => ({
-            id: item.id,
-            title: item.title,
-            description: item.description,
-            category: item.category,
-            location: item.location,
-            daily_rate: item.daily_rate,
-            availability: item.availability,
-            instant_booking: item.instant_booking,
-            images: item.images || [],
-            videos: item.videos || [],
-            view_count: item.view_count || 0,
-            favorite_count: item.favorite_count || 0,
-            created_date: item.created_at,
-            owner_id: item.owner_id,
-            created_by: item.created_by,
-          }));
+      if (response.success && response.data) {
+        // Ensure data is an array
+        const itemsData = Array.isArray(response.data) ? response.data : []
+        
+        // Map API response to Item format
+        const items: Item[] = itemsData.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          category: item.category,
+          location: item.location,
+          daily_rate: item.daily_rate,
+          availability: item.availability,
+          instant_booking: item.instant_booking,
+          images: item.images || [],
+          videos: item.videos || [],
+          view_count: item.view_count || 0,
+          favorite_count: item.favorite_count || 0,
+          created_date: item.created_at,
+          owner_id: item.owner_id,
+          created_by: item.created_by,
+        }));
 
+        if (append) {
+          setAllItems(prev => [...prev, ...items]);
+        } else {
           setAllItems(items);
+        }
 
-          // Load user favorites if signed in
-          if (userLoaded && isSignedIn && currentUser) {
-            try {
-              const userEmail = currentUser.emailAddresses[0]?.emailAddress;
-              if (userEmail) {
-                try {
-                  const favorites = await getFavorites(userEmail);
-                  setUserFavorites(favorites);
-                } catch (favError) {
-                  console.log('Could not load favorites from API:', favError);
-                  // Fallback to localStorage if API fails
-                  if (typeof window !== 'undefined') {
-                    const favoritesKey = `favorites_${userEmail}`;
-                    const storedFavorites = localStorage.getItem(favoritesKey);
-                    if (storedFavorites) {
-                      setUserFavorites(JSON.parse(storedFavorites));
-                    }
+        // Check if there are more items to load
+        setHasMore(items.length === itemsPerPage);
+
+        // Load user favorites if signed in (only on initial load)
+        if (!append && userLoaded && isSignedIn && currentUser) {
+          try {
+            const userEmail = currentUser.emailAddresses[0]?.emailAddress;
+            if (userEmail) {
+              try {
+                const favorites = await getFavorites(userEmail);
+                setUserFavorites(favorites);
+              } catch (favError) {
+                console.log('Could not load favorites from API:', favError);
+                // Fallback to localStorage if API fails
+                if (typeof window !== 'undefined') {
+                  const favoritesKey = `favorites_${userEmail}`;
+                  const storedFavorites = localStorage.getItem(favoritesKey);
+                  if (storedFavorites) {
+                    setUserFavorites(JSON.parse(storedFavorites));
                   }
                 }
               }
-            } catch (error) {
-              console.log('Could not load favorites:', error);
             }
+          } catch (error) {
+            console.log('Could not load favorites:', error);
           }
-        } else {
-          console.error('Failed to fetch items:', response.error);
-          console.error('Response:', response);
-          // Fallback to empty array if API fails
+        }
+      } else {
+        console.error('Failed to fetch items:', response.error);
+        if (!append) {
           setAllItems([]);
         }
-      } catch (error) {
-        console.error('Error loading items:', error);
-        console.error('Error details:', error instanceof Error ? error.message : String(error));
-        console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-        // Check if it's a network error
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-          console.error('Network error: Make sure the backend server is running on http://localhost:5000');
-        }
-        setAllItems([]);
-      } finally {
-        setIsLoading(false);
+        setHasMore(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading items:', error);
+      if (!append) {
+        setAllItems([]);
+      }
+      setHasMore(false);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, [buildParams, userLoaded, isSignedIn, currentUser]);
 
+  // Initial load and reset when filters change
+  useEffect(() => {
+    // Reset pagination when filters change
+    setCurrentOffset(0);
+    setHasMore(true);
+    
     // Load items regardless of auth status
     // Only load on client side
     if (typeof window !== 'undefined') {
-      loadItems();
+      loadItems(0, false);
     } else {
       setIsLoading(false);
     }
-  }, [userLoaded, isSignedIn, currentUser, searchQuery, locationQuery, selectedCategory, priceRange.min, priceRange.max, availabilityFilter, sortBy]);
+  }, [searchQuery, locationQuery, selectedCategory, priceRange.min, priceRange.max, availabilityFilter, sortBy, loadItems]);
+
+  // Load more items function
+  const loadMoreItems = useCallback(() => {
+    if (isLoadingMore || !hasMore) return;
+    
+    const nextOffset = currentOffset + itemsPerPage;
+    setCurrentOffset(nextOffset);
+    loadItems(nextOffset, true);
+  }, [currentOffset, isLoadingMore, hasMore, loadItems]);
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+          loadMoreItems();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [hasMore, isLoadingMore, isLoading, loadMoreItems]);
 
   const handleFavoriteChange = async () => {
     if (onFavoriteChange) {
@@ -240,6 +302,21 @@ export default function AIIItems({
               onFavoriteChange={handleFavoriteChange}
             />
           ))}
+        </div>
+        
+        {/* Infinite scroll trigger and loading indicator */}
+        <div ref={observerTarget} className="mt-8 flex justify-center">
+          {isLoadingMore && (
+            <div className="flex items-center gap-2 text-slate-600">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Loading more items...</span>
+            </div>
+          )}
+          {!hasMore && allItems.length > 0 && (
+            <div className="text-slate-500 text-sm">
+              No more items to load
+            </div>
+          )}
         </div>
       </div>
     </div>

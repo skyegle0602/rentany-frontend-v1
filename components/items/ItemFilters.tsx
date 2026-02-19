@@ -29,6 +29,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useLanguage } from '@/components/language/LanguageContext';
+import SaveSearchButton from "@/components/search/SaveSearchButton";
 
 // Type definitions
 interface Category {
@@ -161,6 +162,24 @@ export default function ItemFilters({
 
   return (
     <div className="space-y-4">
+      {/* Header with Title */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-slate-900">Search & Filter</h2>
+        <SaveSearchButton
+          filters={{
+            searchQuery,
+            locationQuery,
+            selectedCategory,
+            priceRange,
+            dateFilter,
+            ratingFilter,
+            sortBy,
+          }}
+      />
+      </div>
+      
+      
+
       {/* Main Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -183,18 +202,20 @@ export default function ItemFilters({
           />
         </div>
 
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-full sm:w-48 h-12 rounded-xl border-slate-200">
-            <SelectValue placeholder={t('filters.category')} />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((cat) => (
-              <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="relative w-full sm:w-48">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-full h-12 rounded-xl border-slate-200">
+              <SelectValue placeholder={t('filters.category')} />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((cat) => (
+                <SelectItem key={cat.value} value={cat.value}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Quick Filters & Actions Row */}

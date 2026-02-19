@@ -27,6 +27,9 @@ interface RentalRequest {
   start_date?: string;
   end_date?: string;
   total_amount?: number;
+  platform_fee?: number;
+  security_deposit?: number;
+  total_paid?: number;
   status: string;
   created_date: string;
 }
@@ -152,10 +155,25 @@ export default function RentalHistoryTab({ userEmail }: RentalHistoryTabProps) {
                       </span>
                     </div>
                   )}
-                  {rental.total_amount && (
+                  {typeof rental.total_amount === 'number' && (
                     <div className="flex items-center gap-1">
                       <DollarSign className="w-3 h-3" />
-                      <span>${rental.total_amount.toFixed(2)}</span>
+                      <div className="flex flex-col leading-tight">
+                        {(() => {
+                          const rentalCost = rental.total_amount || 0;
+                          const platformFee = typeof rental.platform_fee === 'number' ? rental.platform_fee : rentalCost * 0.15;
+                          const securityDeposit = typeof rental.security_deposit === 'number' ? rental.security_deposit : 0;
+                          const totalPaid = typeof rental.total_paid === 'number' ? rental.total_paid : rentalCost + platformFee + securityDeposit;
+                          return (
+                            <>
+                              <span className="whitespace-nowrap font-medium">${totalPaid.toFixed(2)}</span>
+                              <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                                Rental ${rentalCost.toFixed(2)} • Fee ${platformFee.toFixed(2)} • Deposit ${securityDeposit.toFixed(2)}
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   )}
                   <div className="flex items-center gap-1">

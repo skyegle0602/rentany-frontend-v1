@@ -81,7 +81,7 @@ export default function BulkEditItemsPage() {
     try {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
-        router.push('/profile');
+        router.push('/home');
         return;
       }
       setUser(currentUser);
@@ -90,7 +90,7 @@ export default function BulkEditItemsPage() {
       const ownerId = currentUser.clerk_id || currentUser.id;
       if (!ownerId) {
         console.error('No owner ID found for current user');
-        router.push('/profile');
+        router.push('/home');
         return;
       }
 
@@ -103,7 +103,7 @@ export default function BulkEditItemsPage() {
       }
     } catch (error) {
       console.error("Error loading items:", error);
-      router.push('/profile');
+      router.push('/home');
     } finally {
       setIsLoading(false);
     }
@@ -261,7 +261,7 @@ export default function BulkEditItemsPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => router.push('/profile')}
+            onClick={() => router.push('/home')}
             className="w-12 h-12 rounded-xl"
           >
             <ArrowLeft className="w-5 h-5" />

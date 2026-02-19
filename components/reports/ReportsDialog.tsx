@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { AlertTriangle, Upload, X } from 'lucide-react';
-import { uploadFile, getCurrentUser, api } from '@/lib/api-client';
+import { getCurrentUser, createListingReport, api } from '@/lib/api-client';
 
 interface ReportDialogProps {
   isOpen: boolean;
@@ -46,6 +46,15 @@ export default function ReportDialog({
     evidence_urls: []
   });
 
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setFormData({ reason: '', description: '', evidence_urls: [] });
+      setIsSubmitting(false);
+      setIsUploadingEvidence(false);
+    }
+  }, [isOpen]);
+
   const userReasons = [
     { value: 'harassment', label: 'Harassment or Bullying' },
     { value: 'spam', label: 'Spam or Scam' },
@@ -73,8 +82,8 @@ export default function ReportDialog({
     setIsUploadingEvidence(true);
     try {
       const uploadPromises = files.map(async (file: File) => {
-        const { file_url } = await uploadFile(file);
-        return file_url;
+        const response = await api.uploadFile(file);
+        return response.file_url;
       });
       
       const uploadedUrls = await Promise.all(uploadPromises);
@@ -98,28 +107,43 @@ export default function ReportDialog({
     }));
   };
 
-  const handleSubmit = async (e:React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('Form submitted', { formData, itemId, reportType });
+    
+    // Validate required fields before submitting
+    if (!formData.reason) {
+      alert('Please select a reason for the report.');
+      return;
+    }
+
+    if (!formData.description || !formData.description.trim()) {
+      alert('Please provide a detailed description.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const currentUser = await getCurrentUser();
+      console.log('Current user:', currentUser);
       
       if (!currentUser) {
         alert('You must be logged in to submit a report.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!currentUser.email) {
+        alert('Unable to retrieve your email. Please try again.');
+        setIsSubmitting(false);
         return;
       }
       
       if (reportType === 'user') {
         // TODO: Implement user report API call
-        // await api.createUserReport({
-        //   reporter_email: currentUser.email,
-        //   reported_email: targetEmail,
-        //   reason: formData.reason,
-        //   description: formData.description,
-        //   evidence_urls: formData.evidence_urls,
-        //   status: 'pending'
-        // });
         console.log('User report:', {
           reporter_email: currentUser.email,
           reported_email: targetEmail,
@@ -128,38 +152,54 @@ export default function ReportDialog({
           evidence_urls: formData.evidence_urls,
           status: 'pending'
         });
+        alert('User reporting is not yet implemented.');
+        setIsSubmitting(false);
+        return;
       } else {
-        // For listing reports, create a report via API
-        const response = await api.request('/reports/listing', {
-          method: 'POST',
-          body: JSON.stringify({
-            item_id: itemId,
-            reporter_email: currentUser.email,
-            reason: formData.reason,
-            description: formData.description,
-            evidence_urls: formData.evidence_urls,
-            status: 'pending'
-          }),
-        });
-        
-        if (!response.success) {
-          throw new Error(response.error || 'Failed to submit listing report');
+        // Validate required fields
+        if (!itemId) {
+          alert('Item ID is missing. Please refresh the page and try again.');
+          setIsSubmitting(false);
+          return;
         }
-      }
 
-      alert('Report submitted successfully. Our team will review it shortly.');
-      onClose();
-      setFormData({ reason: '', description: '', evidence_urls: [] });
-    } catch (error) {
+        const requestData = {
+          item_id: itemId,
+          reporter_email: currentUser.email,
+          reason: formData.reason,
+          description: formData.description.trim(),
+          evidence_urls: formData.evidence_urls || [],
+          status: 'pending'
+        };
+
+        console.log('Submitting report with data:', requestData);
+
+        // For listing reports, create a report via API wrapper function
+        await createListingReport(requestData);
+        
+        console.log('Report submitted successfully');
+
+        alert('Report submitted successfully. Our team will review it shortly.');
+        onClose();
+        setFormData({ reason: '', description: '', evidence_urls: [] });
+      }
+    } catch (error: any) {
       console.error("Error submitting report:", error);
-      alert("Failed to submit report. Please try again.");
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert(`Failed to submit report: ${errorMessage}. Please try again.`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleClose = () => {
+    if (!isSubmitting) {
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-900">
@@ -264,25 +304,25 @@ export default function ReportDialog({
               Only submit reports for genuine concerns about safety, fraud, or policy violations.
             </p>
           </div>
-        </form>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting || !formData.reason || !formData.description}
-            className="bg-red-600 hover:bg-red-700"
-          >
-            {isSubmitting ? 'Submitting...' : 'Submit Report'}
-          </Button>
-        </DialogFooter>
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || !formData.reason || !formData.description.trim()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isSubmitting ? 'Submitting...' : 'Submit Report'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Eye, Play, Zap } from "lucide-react";
+import { MapPin, Eye, Play, Zap, Heart } from "lucide-react";
 import Link from "next/link";
 import { createPageUrl } from "@/lib/utils";
 import FavoriteButton from '../favorites/FavoriteButton';
@@ -53,7 +53,7 @@ interface ItemCardProps {
   onFavoriteChange?: () => void;
 }
 
-export default function ItemCard({ item, userFavorites = [], currentUser = null, onFavoriteChange }: ItemCardProps) {
+function ItemCardContent({ item, userFavorites = [], currentUser = null, onFavoriteChange }: ItemCardProps) {
   const { t } = useLanguage();
   const validVideos = (item.videos || []).filter(Boolean);
   const validImages = (item.images || []).filter(Boolean);
@@ -189,6 +189,7 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
               currentUser={currentUser}
               onFavoriteChange={onFavoriteChange}
               size="sm"
+              favoriteCount={item.favorite_count || 0}
             />
           </div>
 
@@ -242,5 +243,40 @@ export default function ItemCard({ item, userFavorites = [], currentUser = null,
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+// Wrapper component with state management for favorite count
+export default function ItemCard({ item: initialItem, userFavorites = [], currentUser = null, onFavoriteChange }: ItemCardProps) {
+  const [item, setItem] = React.useState<Item>(initialItem);
+  
+  // Update item when prop changes
+  React.useEffect(() => {
+    setItem(initialItem);
+  }, [initialItem]);
+
+  const handleFavoriteChange = async () => {
+    // Optimistically update favorite_count
+    const isFavorited = userFavorites.some((fav) => fav.item_id === item.id);
+    setItem(prev => ({
+      ...prev,
+      favorite_count: isFavorited 
+        ? Math.max(0, (prev.favorite_count || 0) - 1)
+        : (prev.favorite_count || 0) + 1
+    }));
+    
+    // Call the parent's onFavoriteChange callback
+    if (onFavoriteChange) {
+      await onFavoriteChange();
+    }
+  };
+
+  return (
+    <ItemCardContent
+      item={item}
+      userFavorites={userFavorites}
+      currentUser={currentUser}
+      onFavoriteChange={handleFavoriteChange}
+    />
   );
 }

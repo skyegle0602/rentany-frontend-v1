@@ -46,9 +46,9 @@ function CheckEmailContent() {
         if (signUp.createdSessionId) {
           await setActive({ session: signUp.createdSessionId });
         }
-        // Redirect to home after a short delay
+        // Redirect to home page
         setTimeout(() => {
-          router.push("/home");
+          window.location.href = "/home";
         }, 1500);
       } else {
         setError("Verification failed. Please check your code and try again.");

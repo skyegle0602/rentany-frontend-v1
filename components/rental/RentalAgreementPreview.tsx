@@ -25,6 +25,9 @@ interface RentalRequest {
   start_date?: string;
   end_date?: string;
   total_amount: number;
+  platform_fee?: number;
+  security_deposit?: number;
+  total_paid?: number;
   status: 'inquiry' | 'pending' | 'approved' | 'paid' | 'completed' | 'cancelled' | 'rejected';
   created_date: string;
   message?: string;
@@ -90,7 +93,16 @@ export default function RentalAgreementPreview({
   const startDate = rentalRequest.start_date ? parseISO(rentalRequest.start_date) : null;
   const endDate = rentalRequest.end_date ? parseISO(rentalRequest.end_date) : null;
   const rentalDays = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
-  const platformFee = rentalRequest.total_amount * 0.15;
+  const rentalCost = rentalRequest.total_amount || 0;
+  const platformFee = typeof rentalRequest.platform_fee === 'number' ? rentalRequest.platform_fee : rentalCost * 0.15;
+  const securityDeposit =
+    typeof rentalRequest.security_deposit === 'number'
+      ? rentalRequest.security_deposit
+      : (item.deposit || 0);
+  const totalPaid =
+    typeof rentalRequest.total_paid === 'number'
+      ? rentalRequest.total_paid
+      : rentalCost + platformFee + securityDeposit;
   const itemImage = item.images?.[0] || item.videos?.[0];
 
   const pickupReports = conditionReports.filter(r => r.report_type === 'pickup');
@@ -278,29 +290,29 @@ export default function RentalAgreementPreview({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Base Rental Cost:</span>
-                <span className="font-medium">${rentalRequest.total_amount.toFixed(2)}</span>
+                <span className="font-medium">${rentalCost.toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Platform Fee (15%):</span>
                 <span className="font-medium">${platformFee.toFixed(2)}</span>
               </div>
-              {item.deposit && item.deposit > 0 && (
+              {securityDeposit > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Security Deposit:</span>
-                  <span className="font-medium">${item.deposit.toFixed(2)}</span>
+                  <span className="font-medium">${securityDeposit.toFixed(2)}</span>
                 </div>
               )}
               <Separator />
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900">Total Paid by Renter:</span>
                 <span className="font-bold text-xl text-green-600">
-                  ${(rentalRequest.total_amount + platformFee + (item.deposit || 0)).toFixed(2)}
+                  ${totalPaid.toFixed(2)}
                 </span>
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
                 <p className="text-xs text-blue-800">
-                  <strong>Owner Payout:</strong> ${(rentalRequest.total_amount * 0.85).toFixed(2)} 
-                  <span className="text-blue-600"> (after 15% platform fee)</span>
+                  <strong>Owner Payout:</strong> ${rentalCost.toFixed(2)}
+                  <span className="text-blue-600"> (platform fee is paid by renter)</span>
                 </p>
               </div>
             </div>

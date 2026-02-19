@@ -50,12 +50,6 @@ function SignInContent() {
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check if already signed in
-    if (isSignedIn) {
-      router.push("/home");
-      return;
-    }
-    
     if (!isLoaded || !signIn) {
       setError("Authentication service is not ready. Please try again.");
       return;
@@ -82,7 +76,8 @@ function SignInContent() {
         if (result.createdSessionId) {
           await setActive({ session: result.createdSessionId });
         }
-        router.push("/home");
+        // Redirect to SSO callback (handles both new and existing users)
+        window.location.href = "/auth/sso-callback";
       } else {
         // Handle additional verification steps if needed
         setError("Sign-in requires additional verification. Please check your email.");
@@ -134,10 +129,11 @@ function SignInContent() {
       const currentUrl = window.location.origin;
       
       // signUp.authenticateWithRedirect handles both sign-in and sign-up automatically
+      // The SSO callback will redirect to home
       await signUpHook.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: `${currentUrl}/auth/sso-callback`,
-        redirectUrlComplete: `${currentUrl}/home`,
+        redirectUrlComplete: `${currentUrl}/auth/sso-callback`,
       });
     } catch (err: any) {
       console.error("Google sign-in error:", err);

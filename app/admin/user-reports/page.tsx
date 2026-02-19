@@ -37,7 +37,7 @@ interface UserReport {
   status: 'pending' | 'under_review' | 'resolved' | 'dismissed';
   evidence_urls?: string[];
   admin_notes?: string;
-  action_taken?: string;
+  action_taken?: 'none' | 'warning_sent' | 'user_suspended' | 'user_banned';
   created_date: string;
 }
 
@@ -84,7 +84,7 @@ export default function AdminUserReportsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [resolutionData, setResolutionData] = useState<{
     admin_notes: string;
-    action_taken: string;
+    action_taken: 'none' | 'warning_sent' | 'user_suspended' | 'user_banned';
   }>({
     admin_notes: '',
     action_taken: 'none'
@@ -111,7 +111,7 @@ export default function AdminUserReportsPage() {
         return;
       }
 
-      const reportsResponse = await api.request<UserReport[]>('/user-reports');
+      const reportsResponse = await api.request<UserReport[]>('/reports/user');
       const allReports = reportsResponse.success && reportsResponse.data ? reportsResponse.data : [];
       setReports(allReports);
 
@@ -145,7 +145,7 @@ export default function AdminUserReportsPage() {
     setSelectedReport(report);
     setResolutionData({
       admin_notes: report.admin_notes || '',
-      action_taken: 'none'
+      action_taken: (report.action_taken as 'none' | 'warning_sent' | 'user_suspended' | 'user_banned') || 'none'
     });
   };
 
@@ -154,11 +154,12 @@ export default function AdminUserReportsPage() {
     
     setIsUpdating(true);
     try {
-      await api.request(`/user-reports/${selectedReport.id}`, {
+      await api.request(`/reports/user/${selectedReport.id}`, {
         method: 'PUT',
         body: JSON.stringify({
           status: status,
-          admin_notes: resolutionData.admin_notes
+          admin_notes: resolutionData.admin_notes,
+          action_taken: resolutionData.action_taken
         }),
       });
 
@@ -219,57 +220,20 @@ export default function AdminUserReportsPage() {
 
     setIsUpdating(true);
     try {
-      // Update report with action taken
-      await api.request(`/user-reports/${selectedReport.id}`, {
+      // Update report with action taken (backend handles notifications)
+      await api.request(`/reports/user/${selectedReport.id}`, {
         method: 'PUT',
         body: JSON.stringify({
           status: 'resolved',
-          admin_notes: resolutionData.admin_notes
+          admin_notes: resolutionData.admin_notes,
+          action_taken: resolutionData.action_taken
         }),
-      });
-
-      const reportedUserUsername = usersMap[selectedReport.reported_email]?.username || 'a user';
-      const reporterUserUsername = usersMap[selectedReport.reporter_email]?.username || 'a user';
-
-      const actionMessages: Record<string, string> = {
-        warning_sent: "⚠️ Warning Issued",
-        user_suspended: "🚫 Account Suspended",
-        user_banned: "❌ Account Banned"
-      };
-
-      const actionDescriptions: Record<string, string> = {
-        warning_sent: "You have received a warning for violating our community guidelines. Continued violations may result in account suspension.",
-        user_suspended: "Your account has been temporarily suspended for 7 days due to policy violations. During this time, you will not be able to list items or make rental requests.",
-        user_banned: "Your account has been permanently banned for serious violations of our terms of service. If you believe this is an error, please contact support."
-      };
-
-      // Notify reported user about the specific action taken
-      const actionMessage = actionMessages[resolutionData.action_taken];
-      const actionDescription = actionDescriptions[resolutionData.action_taken];
-      if (actionMessage && actionDescription) {
-        await sendNotification({
-          user_email: selectedReport.reported_email,
-          type: 'account_action',
-          title: actionMessage,
-          message: actionDescription,
-          related_id: selectedReport.id,
-          link: `/Profile`
-        });
-      }
-
-      // Notify reporter that action has been taken
-      await sendNotification({
-        user_email: selectedReport.reporter_email,
-        type: 'report_outcome',
-        title: '✅ Report Update: Action Taken',
-        message: `Your report concerning @${reportedUserUsername} has been reviewed and appropriate action has been taken. Thank you for helping keep our community safe.`,
-        related_id: selectedReport.id,
-        link: `/Profile`
       });
 
       await loadData();
       setSelectedReport(null);
-      alert(`Action taken: ${resolutionData.action_taken}. Relevant parties have been notified.`);
+      setResolutionData({ admin_notes: '', action_taken: 'none' });
+      alert(`Action taken: ${resolutionData.action_taken.replace('_', ' ')}. Relevant parties have been notified.`);
     } catch (error) {
       console.error("Error taking action:", error);
       alert("Failed to take action. Please try again.");
@@ -559,7 +523,7 @@ export default function AdminUserReportsPage() {
                       <Label>Action to Take</Label>
                       <Select 
                         value={resolutionData.action_taken}
-                        onValueChange={(value) => setResolutionData(prev => ({ ...prev, action_taken: value }))}
+                        onValueChange={(value) => setResolutionData(prev => ({ ...prev, action_taken: value as 'none' | 'warning_sent' | 'user_suspended' | 'user_banned' }))}
                       >
                         <SelectTrigger className="mt-2">
                           <SelectValue />

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react';
-import { uploadFile } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { X, Image, Video, Play, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -52,7 +52,7 @@ export default function MediaUploadZone({
 
       const uploadPromises = processedFiles.map(async (file: File) => {
         try {
-          const response = await uploadFile(file);
+          const response = await api.uploadFile(file);
           return response.file_url;
         } catch (error) {
           console.error(`Failed to upload ${file.name}:`, error);

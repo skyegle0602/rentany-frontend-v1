@@ -134,26 +134,35 @@ function ManageItemPageContent() {
       }
 
       if (!itemId) {
-        router.push('/profile');
+        router.push('/home');
         return;
       }
 
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
-        const itemsResponse = await api.request<Item[]>('/items');
-        const allItems = itemsResponse.success && itemsResponse.data ? itemsResponse.data : [];
-        const foundItem = allItems.find(i => i.id === itemId);
-
-        if (!foundItem) {
-          router.push('/profile');
+        
+        // Fetch only the specific item instead of all items
+        const itemResponse = await api.getItem(itemId);
+        
+        if (!itemResponse.success || !itemResponse.data) {
+          router.push('/home');
+          return;
+        }
+        
+        // Handle both single item response and nested response structure
+        const itemData = (itemResponse.data as any).item || itemResponse.data;
+        const foundItem = itemData;
+        
+        if (!foundItem || !foundItem.id) {
+          router.push('/home');
           return;
         }
         
         // Check if user is the owner
         // owner_id is the Clerk user ID, so compare with clerk_id
         if (!user) {
-          router.push('/profile');
+          router.push('/home');
           return;
         }
         
@@ -162,7 +171,7 @@ function ManageItemPageContent() {
                        foundItem.created_by === user.email;
         
         if (!isOwner) {
-          router.push('/profile');
+          router.push('/home');
           return;
         }
 
@@ -190,7 +199,7 @@ function ManageItemPageContent() {
         });
       } catch (error) {
         console.error("Error loading item:", error);
-        router.push('/profile');
+        router.push('/home');
       } finally {
         setIsLoading(false);
       }
@@ -207,33 +216,99 @@ function ManageItemPageContent() {
     setIsSaving(true);
     if (!item) {
       alert('Item not found. Please refresh the page.');
+      setIsSaving(false);
       return;
     }
 
     try {
-      await api.request(`/items/${item.id}`, {
+      // Prepare update data with proper type conversions
+      const updatePayload: any = {
+        ...formData,
+      };
+
+      // Convert numeric fields, handling empty strings
+      if (formData.daily_rate !== undefined && formData.daily_rate !== '') {
+        const dailyRate = parseFloat(formData.daily_rate as string);
+        if (!isNaN(dailyRate)) updatePayload.daily_rate = dailyRate;
+      }
+      if (formData.deposit !== undefined && formData.deposit !== '') {
+        const deposit = parseFloat(formData.deposit as string);
+        if (!isNaN(deposit)) updatePayload.deposit = deposit;
+      }
+      if (formData.min_rental_days !== undefined && formData.min_rental_days !== '') {
+        const minDays = parseInt(formData.min_rental_days as string);
+        if (!isNaN(minDays)) updatePayload.min_rental_days = minDays;
+      }
+      if (formData.max_rental_days !== undefined && formData.max_rental_days !== '') {
+        const maxDays = parseInt(formData.max_rental_days as string);
+        if (!isNaN(maxDays)) updatePayload.max_rental_days = maxDays;
+      }
+      if (formData.delivery_fee !== undefined && formData.delivery_fee !== '') {
+        const deliveryFee = parseFloat(formData.delivery_fee as string);
+        if (!isNaN(deliveryFee)) updatePayload.delivery_fee = deliveryFee;
+      }
+      if (formData.delivery_radius !== undefined && formData.delivery_radius !== '') {
+        const radius = parseFloat(formData.delivery_radius as string);
+        if (!isNaN(radius)) updatePayload.delivery_radius = radius;
+      }
+      if (formData.notice_period_hours !== undefined && formData.notice_period_hours !== '') {
+        const noticeHours = parseInt(formData.notice_period_hours as string);
+        if (!isNaN(noticeHours)) updatePayload.notice_period_hours = noticeHours;
+      }
+
+      // Convert boolean fields
+      updatePayload.instant_booking = Boolean(formData.instant_booking);
+      updatePayload.same_day_pickup = Boolean(formData.same_day_pickup);
+
+      const response = await api.request(`/items/${item.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          ...formData,
-          daily_rate: parseFloat(formData.daily_rate as string),
-          deposit: parseFloat(formData.deposit as string),
-          min_rental_days: parseInt(formData.min_rental_days as string),
-          max_rental_days: parseInt(formData.max_rental_days as string),
-          delivery_fee: parseFloat(formData.delivery_fee as string),
-          delivery_radius: formData.delivery_radius ? parseFloat(formData.delivery_radius as string) : null,
-          notice_period_hours: parseInt(formData.notice_period_hours as string),
-          instant_booking: Boolean(formData.instant_booking),
-          same_day_pickup: Boolean(formData.same_day_pickup)
-        })
+        body: JSON.stringify(updatePayload)
       });
-      // Optionally navigate back to profile or show success message
-      router.push('/profile');
+
+      if (!response.success) {
+        alert(`Failed to save changes: ${response.error || 'Unknown error'}`);
+        setIsSaving(false);
+        return;
+      }
+
+      // Reload item data to reflect changes
+      const itemId = searchParams.get('id');
+      if (itemId) {
+        const itemResponse = await api.request<Item>(`/items/${itemId}`);
+        if (itemResponse.success && itemResponse.data) {
+          setItem(itemResponse.data);
+          setFormData({
+            title: itemResponse.data.title || '',
+            description: itemResponse.data.description || '',
+            category: itemResponse.data.category || '',
+            daily_rate: itemResponse.data.daily_rate?.toString() || '',
+            deposit: itemResponse.data.deposit?.toString() || '',
+            condition: itemResponse.data.condition || '',
+            location: itemResponse.data.location || '',
+            street_address: itemResponse.data.street_address || '',
+            postcode: itemResponse.data.postcode || '',
+            country: itemResponse.data.country || '',
+            show_on_map: itemResponse.data.show_on_map ?? true,
+            min_rental_days: itemResponse.data.min_rental_days?.toString() || '',
+            max_rental_days: itemResponse.data.max_rental_days?.toString() || '',
+            delivery_options: itemResponse.data.delivery_options || [],
+            delivery_fee: itemResponse.data.delivery_fee?.toString() || '',
+            delivery_radius: itemResponse.data.delivery_radius?.toString() || '',
+            notice_period_hours: itemResponse.data.notice_period_hours?.toString() || '',
+            instant_booking: itemResponse.data.instant_booking || false,
+            same_day_pickup: itemResponse.data.same_day_pickup || false,
+          });
+        }
+      }
+
+      alert('Changes saved successfully!');
     } catch (error) {
       console.error("Error updating item:", error);
-      alert("Failed to save changes. Please try again.");
+      alert(`Failed to save changes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
+    router.push(`/manage-item?id=${item?.id}`);
   };
 
   const handleTestStripe = async () => {
@@ -894,7 +969,7 @@ function ManageItemPageContent() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => router.push('/profile')}
+            onClick={() => router.push('/home')}
             className="w-10 h-10 rounded-lg"
           >
             <ArrowLeft className="w-5 h-5" />

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { api, uploadFile, sendEmail, getCurrentUser, type UserData } from '@/lib/api-client';
+import { api, getCurrentUser, type UserData } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -30,7 +30,6 @@ import ConditionReportDisplay from './ConditionReportDisplay';
 import PaymentDeadline from './PaymentDeadline';
 import ExtensionRequest from '../rental/ExtensionRequest';
 import ExtensionRequestDisplay from '../rental/ExtensionRequestDisplay';
-// sendEmail already imported from api-client
 
 const statusColors = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -62,6 +61,10 @@ interface RentalRequest {
   owner_email: string;
   status: string;
   return_pin_verified?: boolean;
+  total_amount?: number;
+  platform_fee?: number;
+  security_deposit?: number;
+  total_paid?: number;
   [key: string]: any;
 }
 
@@ -120,9 +123,9 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   const [reviewData, setReviewData] = useState({ rating: 0, comment: '', images: [] as string[] });
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [isUploadingReviewImage, setIsUploadingReviewImage] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesTopRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const [shouldScrollToTop, setShouldScrollToTop] = useState(true);
   const [isLocallyInitiatedStatusUpdate, setIsLocallyInitiatedStatusUpdate] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [conditionReports, setConditionReports] = useState<ConditionReport[]>([]);
@@ -141,15 +144,17 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   // Check if user is actively using forms - if so, pause auto-refresh
   const isFormActive = showConditionForm || showDisputeForm || showExtensionForm || isTyping;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToTop = () => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleScroll = () => {
     if (messagesContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setShouldScrollToBottom(isNearBottom);
+      const { scrollTop } = messagesContainerRef.current;
+      const isNearTop = scrollTop < 100;
+      setShouldScrollToTop(isNearTop);
     }
   };
   
@@ -303,9 +308,15 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
     }
 
     try {
-      const requestsResponse = await api.request<RentalRequest[]>('/rental-requests');
-      const allRequests = requestsResponse.success && requestsResponse.data ? requestsResponse.data : [];
-      const updatedRequest = allRequests.find(r => r.id === request.id);
+      // Only load rental requests for the current user (much more efficient than loading all)
+      const [renterReqsResponse, ownerReqsResponse] = await Promise.all([
+        api.request<RentalRequest[]>(`/rental-requests?renter_email=${encodeURIComponent(currentUser.email)}`),
+        api.request<RentalRequest[]>(`/rental-requests?owner_email=${encodeURIComponent(currentUser.email)}`)
+      ]);
+      const renterReqs = renterReqsResponse.success && renterReqsResponse.data ? renterReqsResponse.data : [];
+      const ownerReqs = ownerReqsResponse.success && ownerReqsResponse.data ? ownerReqsResponse.data : [];
+      const allUserRequests = [...renterReqs, ...ownerReqs];
+      const updatedRequest = allUserRequests.find(r => r.id === request.id);
       
       // Only update if status or return_pin_verified actually changed
       if (updatedRequest && (updatedRequest.status !== currentRequest.status || updatedRequest.return_pin_verified !== currentRequest.return_pin_verified)) {
@@ -447,6 +458,11 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
             setMessages([]);
           }
           await delay(1500);
+          
+          // Scroll to top after initial load (newest messages at top)
+          setTimeout(() => {
+            scrollToTop();
+          }, 100);
         } finally {
           // Always clear loading state, even if some requests fail
           setIsLoading(false);
@@ -511,10 +527,10 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   }, []); // Only run once on mount - use refs for functions to avoid re-renders
 
   useEffect(() => {
-    if (shouldScrollToBottom) {
-      scrollToBottom();
+    if (shouldScrollToTop) {
+      scrollToTop();
     }
-  }, [messages, shouldScrollToBottom, conditionReports, extensionRequests]);
+  }, [messages, shouldScrollToTop, conditionReports, extensionRequests]);
 
   useEffect(() => {
     if (request.id === currentRequest.id && (request.status !== currentRequest.status || request.return_pin_verified !== currentRequest.return_pin_verified)) {
@@ -621,69 +637,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
         })
       });
 
-      try {
-        const startDate = new Date(currentRequest.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        const endDate = new Date(currentRequest.end_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        
-        await sendEmail({
-          to: currentRequest.renter_email,
-          subject: '✅ Your Rental Request Has Been Approved!',
-          body: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 40px 30px; text-align: center; border-radius: 12px 12px 0 0;">
-                <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Rentable</h1>
-                <p style="margin: 8px 0 0 0; color: #cbd5e1; font-size: 14px;">Rent Anything, From Anyone</p>
-              </div>
-              
-              <div style="background-color: #ffffff; padding: 40px 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                <h2 style="margin: 0 0 20px 0; color: #10b981; font-size: 24px; font-weight: 600;">🎉 Request Approved!</h2>
-                
-                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
-                  Great news! Your rental request has been approved by the owner.
-                </p>
-                
-                <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                  <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px; font-weight: 600;">📦 Rental Details</h3>
-                  <p style="margin: 8px 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                    <strong style="color: #1e293b;">Item:</strong> ${item?.title || 'Your Rental'}
-                  </p>
-                  <p style="margin: 8px 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                    <strong style="color: #1e293b;">Dates:</strong> ${startDate} - ${endDate}
-                  </p>
-                  <p style="margin: 8px 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                    <strong style="color: #1e293b;">Total Amount:</strong> $${currentRequest.total_amount.toFixed(2)}
-                  </p>
-                </div>
-                
-                <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                  <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px; font-weight: 600;">⏰ Important: Payment Deadline</h3>
-                  <p style="margin: 8px 0; color: #78350f; font-size: 14px; line-height: 1.6;">
-                    You have <strong>24 hours</strong> to complete the payment, or your request will be automatically cancelled and the dates will become available again.
-                  </p>
-                </div>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${window.location.origin}/request" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                    Complete Payment Now
-                  </a>
-                </div>
-                
-                <p style="color: #64748b; font-size: 13px; text-align: center; margin: 20px 0 0 0;">
-                  Have questions? Contact the owner through the app chat.
-                </p>
-              </div>
-              
-              <div style="background-color: #f1f5f9; padding: 20px; text-align: center; margin-top: 20px; border-radius: 8px;">
-                <p style="margin: 0 0 10px 0; color: #64748b; font-size: 13px;">Thank you for using Rentable!</p>
-                <p style="margin: 0; color: #94a3b8; font-size: 12px;">This is an automated message, please do not reply to this email.</p>
-              </div>
-            </div>
-          `,
-          from_name: "Rentable"
-        });
-      } catch (emailError) {
-        console.error('Failed to send approval email:', emailError);
-      }
+      // Email notifications removed - using in-app notifications and chat instead
 
       setCurrentRequest(prev => ({ ...prev, status: 'approved' }));
       await loadAndReadMessages(false);
@@ -870,7 +824,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
     setIsUploadingReviewImage(true);
     try {
       const uploadPromises = files.map(async (file) => {
-        const result = await uploadFile(file);
+        const result = await api.uploadFile(file);
         return result.file_url;
       });
       
@@ -999,8 +953,19 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   const canPay = isRenter && currentRequest.status === 'approved';
   const canCompleteRental = isOwner && currentRequest.status === 'paid'; 
 
-  const renterPlatformFee = currentRequest.total_amount * 0.15;
-  const totalPayment = currentRequest.total_amount + (item?.deposit || 0) + renterPlatformFee;
+  const rentalCost = currentRequest.total_amount || 0;
+  const renterPlatformFee =
+    typeof currentRequest.platform_fee === 'number'
+      ? currentRequest.platform_fee
+      : rentalCost * 0.15;
+  const securityDeposit =
+    typeof currentRequest.security_deposit === 'number'
+      ? currentRequest.security_deposit
+      : (item?.deposit || 0);
+  const totalPayment =
+    typeof currentRequest.total_paid === 'number'
+      ? currentRequest.total_paid
+      : rentalCost + renterPlatformFee + securityDeposit;
 
   const hasUserReviewed = reviews.some(review => review.reviewer_email === currentUser.email);
   const canLeaveReview = currentRequest.status === 'completed' && !hasUserReviewed;
@@ -1018,9 +983,55 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
   const userPickupReport = pickupReports.find(r => r.reported_by_email === currentUser.email);
   const userReturnReport = returnReports.find(r => r.reported_by_email === currentUser.email);
   
-  const needsPickupReport = currentRequest.status === 'paid' && !userPickupReport;
+  // Pickup reports timing: From start_date - 2 hours to start_date + 2 hours
+  // This allows reports to be submitted slightly before pickup (when meeting) and shortly after
+  const PICKUP_REPORT_START_HOURS_BEFORE = 2; // Can submit 2 hours before start date
+  const PICKUP_REPORT_END_HOURS_AFTER = 2; // Can submit up to 2 hours after start date
+  const rentalStartDate = currentRequest.start_date ? new Date(currentRequest.start_date) : null;
+  const now = new Date();
+  
+  let isPickupTime = false;
+  let hoursUntilStart = null;
+  let hoursSinceStart = null;
+  let isPickupWindowOpen = false;
+  let isPickupWindowPassed = false;
+  
+  if (rentalStartDate) {
+    // Calculate hours before/after start date
+    const hoursDiff = (now.getTime() - rentalStartDate.getTime()) / (1000 * 60 * 60);
+    hoursSinceStart = hoursDiff;
+    hoursUntilStart = -hoursDiff; // Negative means before start date
+    
+    // Pickup window: from 2 hours before to 2 hours after start date
+    isPickupWindowOpen = hoursDiff >= -PICKUP_REPORT_START_HOURS_BEFORE && 
+                        hoursDiff <= PICKUP_REPORT_END_HOURS_AFTER;
+    isPickupWindowPassed = hoursDiff > PICKUP_REPORT_END_HOURS_AFTER;
+    isPickupTime = isPickupWindowOpen || isPickupWindowPassed; // For UI display
+  }
+  
+  // Pickup reports can only be submitted within the window:
+  // - From 2 hours before rental start date
+  // - Until 2 hours after rental start date
+  const needsPickupReport = currentRequest.status === 'paid' && 
+                           isPickupWindowOpen &&
+                           !userPickupReport;
+  
+  // Return reports timing: Can be submitted until end_date + 3 hours
+  const RETURN_REPORT_DEADLINE_HOURS_AFTER = 3; // Can submit up to 3 hours after end date
+  let isReturnWindowOpen = false;
+  let isReturnDeadlinePassed = false;
+  let hoursSinceEnd = null;
+  
+  if (endDate) {
+    hoursSinceEnd = (now.getTime() - endDate.getTime()) / (1000 * 60 * 60);
+    // Return reports can be submitted from when rental ends until 3 hours after
+    isReturnWindowOpen = hoursSinceEnd >= 0 && hoursSinceEnd <= RETURN_REPORT_DEADLINE_HOURS_AFTER;
+    isReturnDeadlinePassed = hoursSinceEnd > RETURN_REPORT_DEADLINE_HOURS_AFTER;
+  }
+  
   const needsReturnReport = currentRequest.status === 'paid' && 
                            pickupReports.length === 2 && 
+                           isReturnWindowOpen &&
                            !userReturnReport;
 
   // Check if it's time for return
@@ -1029,8 +1040,26 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
                          pickupReports.length === 2 && 
                          returnReports.length === 0;
 
+  // Condition reports required for completion:
+  // 1. Both pickup reports (one from renter, one from owner) - document item condition before rental
+  // 2. Both return reports (one from renter, one from owner) - document item condition after rental
+  const hasAllPickupReports = pickupReports.length === 2;
   const hasAllReturnReports = returnReports.length === 2;
-  const canReleasePayment = canCompleteRental && hasAllReturnReports;
+  
+  // Check if rental end date has passed (rental duration is finished)
+  const rentalEndDate = currentRequest.end_date ? new Date(currentRequest.end_date) : null;
+  const isRentalFinished = rentalEndDate ? new Date() >= rentalEndDate : false;
+  
+  // Release button appears when:
+  // - User is owner
+  // - Status is 'paid'
+  // - Rental end date has passed (rental duration is finished)
+  // - Both pickup reports submitted (2 total)
+  // - Both return reports submitted (2 total)
+  const canReleasePayment = canCompleteRental && 
+                           isRentalFinished && 
+                           hasAllPickupReports && 
+                           hasAllReturnReports;
 
   const canDeleteChat = (currentRequest.status === 'completed' || currentRequest.status === 'archived') && 
     differenceInDays(new Date(), parseISO(currentRequest.updated_date)) >= 30;
@@ -1039,106 +1068,91 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* Ultra Compact Mobile Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 flex-shrink-0 border-b border-slate-700">
-        {/* Top Row: Back + User Info + Status */}
-        <div className="flex items-center gap-2 px-3 py-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="hover:bg-white/10 text-white rounded-lg h-8 w-8 flex-shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {otherUser?.username ? (
-              <Link href={`/public-profile?username=${otherUser.username}`} className="flex-shrink-0">
-                <div className="bg-white/10 rounded-full w-7 h-7 flex items-center justify-center overflow-hidden border border-white/20">
+      {/* Upwork-style Clean Header */}
+      <div className="flex-shrink-0 border-b border-gray-200 bg-white">
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="hover:bg-gray-100 text-gray-600 rounded-full h-9 w-9 flex-shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {otherUser?.username ? (
+                <Link href={`/public-profile?username=${otherUser.username}`} className="flex-shrink-0">
+                  <div className="rounded-full w-10 h-10 flex items-center justify-center overflow-hidden border-2 border-gray-200 bg-gray-100">
+                    {otherUser?.profile_picture ? (
+                      <img src={otherUser.profile_picture} alt={otherUser.full_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <UserIcon className="text-gray-400 w-5 h-5" />
+                    )}
+                  </div>
+                </Link>
+              ) : (
+                <div className="rounded-full w-10 h-10 flex items-center justify-center overflow-hidden border-2 border-gray-200 bg-gray-100 flex-shrink-0">
                   {otherUser?.profile_picture ? (
                     <img src={otherUser.profile_picture} alt={otherUser.full_name} className="w-full h-full object-cover" />
                   ) : (
-                    <UserIcon className="text-white w-3.5 h-3.5" />
+                    <UserIcon className="text-gray-400 w-5 h-5" />
                   )}
                 </div>
-              </Link>
-            ) : (
-              <div className="bg-white/10 rounded-full w-7 h-7 flex items-center justify-center overflow-hidden border border-white/20 flex-shrink-0">
-                {otherUser?.profile_picture ? (
-                  <img src={otherUser.profile_picture} alt={otherUser.full_name} className="w-full h-full object-cover" />
-                ) : (
-                  <UserIcon className="text-white w-3.5 h-3.5" />
-                )}
-              </div>
-            )}
-            
-            <div className="flex-1 min-w-0">
-              {otherUser?.username ? (
-                <Link 
-                  href={`/public-profile?username=${otherUser.username}`} 
-                  className="text-white hover:underline font-semibold truncate block text-xs"
-                >
-                  @{otherUser.username}
-                </Link>
-              ) : (
-                <h3 className="text-white font-semibold truncate text-xs">
-                  {otherUser?.full_name || "Loading..."}
-                </h3>
               )}
-            </div>
+              
+              <div className="flex-1 min-w-0">
+                {otherUser?.username ? (
+                  <Link 
+                    href={`/public-profile?username=${otherUser.username}`} 
+                    className="text-gray-900 hover:text-blue-600 font-semibold truncate block text-sm"
+                  >
+                    {otherUser?.full_name || `@${otherUser.username}`}
+                  </Link>
+                ) : (
+                  <h3 className="text-gray-900 font-semibold truncate text-sm">
+                    {otherUser?.full_name || "Loading..."}
+                  </h3>
+                )}
+                <p className="text-gray-500 text-xs truncate">
+                  {item?.title || "Rental Request"}
+                </p>
+              </div>
 
-            <Badge 
-              className={`${statusColors[currentRequest.status as keyof typeof statusColors]} border shadow-sm flex-shrink-0 text-[9px] px-1.5 py-0.5`}
-            >
-              {currentRequest.status}
-            </Badge>
-          </div>
-        </div>
-
-        {/* Bottom Row: Item Info (Compact) */}
-        <div className="px-3 pb-2">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5 flex items-center gap-2">
-            <img 
-              src={itemImage} 
-              alt={item?.title}
-              className="rounded w-8 h-8 object-cover flex-shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-white/90 font-medium truncate text-[11px]">{item?.title}</p>
-              <p className="text-white/60 text-[9px]">
-                {format(new Date(currentRequest.start_date), "MMM d")} - {format(new Date(currentRequest.end_date), "MMM d")}
-              </p>
+              <Badge 
+                className={`${statusColors[currentRequest.status as keyof typeof statusColors]} border shadow-sm flex-shrink-0 text-xs px-2 py-1 font-medium`}
+              >
+                {currentRequest.status}
+              </Badge>
             </div>
-            <span className="text-white/90 font-bold text-xs flex-shrink-0">
-              ${currentRequest.total_amount.toFixed(0)}
-            </span>
           </div>
         </div>
       </div>
 
       {/* Payment Deadline Alert */}
       {currentRequest.status === 'approved' && currentUser.email === currentRequest.renter_email && (
-        <div className="p-2 bg-orange-50 border-b border-orange-100 flex-shrink-0">
+        <div className="p-3 bg-amber-50 border-b border-amber-200 flex-shrink-0">
           <PaymentDeadline request={currentRequest as RentalRequest & {updated_date: string}} />
         </div>
       )}
 
-      {/* Messages Area - Scrollable with better spacing */}
+      {/* Messages Area - Upwork-style clean background */}
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-2 py-3 bg-gradient-to-b from-slate-50 to-white space-y-2"
+        className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50 space-y-3"
         style={{ minHeight: 0 }}
       >
         {isLoading && messages.length === 0 ? (
           <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full" />
+            <div className="animate-spin w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full" />
           </div>
         ) : (
           <>
-            {/* Messages */}
-            {messages.map((message) => (
+            <div ref={messagesTopRef} />
+            {/* Messages - Reversed so newest are at top */}
+            {[...messages].reverse().map((message) => (
               <ChatBubble
                 key={message.id}
                 message={message}
@@ -1154,16 +1168,16 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
             {/* Show action cards if no forms are open */}
             {!showConditionForm && !showDisputeForm && !showExtensionForm && currentRequest.status === 'paid' && (
               <>
-                {/* Pickup Report Prompt Card */}
+                {/* Pickup Report Prompt Card - Only shown on or after rental start date */}
                 {needsPickupReport && (
-                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Camera className="w-4 h-4 text-white" />
+                  <div className="bg-white border border-blue-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Camera className="w-5 h-5 text-blue-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-blue-900 text-sm mb-1">📸 Action Required</h4>
-                        <p className="text-xs text-blue-800 mb-2">
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Action Required</h4>
+                        <p className="text-sm text-gray-600 mb-3">
                           {isRenter 
                             ? "Before taking the item, document its condition with photos" 
                             : "Before handing over the item, document its condition with photos"}
@@ -1171,11 +1185,97 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
                         <Button
                           onClick={() => setShowConditionForm('pickup')}
                           size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 w-full text-xs h-8"
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-sm h-9 px-4"
                         >
-                          <Camera className="w-3 h-3 mr-1" />
+                          <Camera className="w-4 h-4 mr-2" />
                           Create Pickup Report
                         </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Info message if pickup window hasn't opened yet */}
+                {currentRequest.status === 'paid' && 
+                 !isPickupWindowOpen && 
+                 !isPickupWindowPassed &&
+                 !userPickupReport && 
+                 rentalStartDate && 
+                 hoursUntilStart !== null && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Pickup Report Available Soon</h4>
+                        <p className="text-sm text-gray-600">
+                          Pickup reports can be submitted from 2 hours before to 2 hours after the rental start date ({format(rentalStartDate, 'MMMM d, yyyy')}).
+                          {hoursUntilStart > PICKUP_REPORT_START_HOURS_BEFORE && ` Opens in ${Math.ceil(hoursUntilStart - PICKUP_REPORT_START_HOURS_BEFORE)} hours.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Warning message if pickup window is open or passed */}
+                {currentRequest.status === 'paid' && 
+                 (isPickupWindowOpen || isPickupWindowPassed) && 
+                 !userPickupReport && 
+                 rentalStartDate && 
+                 hoursSinceStart !== null && (
+                  <div className={`border rounded-lg p-4 shadow-sm ${
+                    isPickupWindowPassed 
+                      ? 'bg-red-50 border-red-200' 
+                      : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-blue-50 border-blue-200'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isPickupWindowPassed 
+                          ? 'bg-red-100' 
+                          : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                          ? 'bg-amber-100'
+                          : 'bg-blue-100'
+                      }`}>
+                        <AlertCircle className={`w-5 h-5 ${
+                          isPickupWindowPassed 
+                            ? 'text-red-600' 
+                            : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                            ? 'text-amber-600'
+                            : 'text-blue-600'
+                        }`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className={`font-semibold text-sm mb-1 ${
+                          isPickupWindowPassed 
+                            ? 'text-red-900' 
+                            : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                            ? 'text-amber-900'
+                            : 'text-gray-900'
+                        }`}>
+                          {isPickupWindowPassed 
+                            ? 'Pickup Report Window Closed' 
+                            : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                            ? 'Pickup Report Window Closing Soon'
+                            : 'Submit Pickup Report'}
+                        </h4>
+                        <p className={`text-sm ${
+                          isPickupWindowPassed 
+                            ? 'text-red-700' 
+                            : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                            ? 'text-amber-700'
+                            : 'text-gray-600'
+                        }`}>
+                          {isPickupWindowPassed 
+                            ? `The pickup report window has closed (2 hours after rental start). Please contact support.`
+                            : hoursSinceStart > PICKUP_REPORT_END_HOURS_AFTER - 0.5
+                            ? `⚠️ Window closing soon! Only ${Math.max(0, Math.ceil((PICKUP_REPORT_END_HOURS_AFTER - hoursSinceStart) * 60))} minutes remaining.`
+                            : hoursSinceStart < 0
+                            ? `Window opens in ${Math.ceil(-hoursSinceStart - PICKUP_REPORT_START_HOURS_BEFORE)} hours.`
+                            : `Window closes in ${Math.max(0, Math.ceil((PICKUP_REPORT_END_HOURS_AFTER - hoursSinceStart) * 60))} minutes.`}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1183,10 +1283,10 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
                 {/* Show Pickup Reports */}
                 {pickupReports.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="text-center">
-                      <span className="bg-blue-100 text-blue-800 text-[10px] font-semibold px-2 py-1 rounded-full inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="bg-blue-50 text-blue-700 text-xs font-medium px-3 py-1.5 rounded-full inline-flex items-center gap-2 border border-blue-200">
+                        <CheckCircle2 className="w-4 h-4" />
                         Pre-Rental Reports ({pickupReports.length}/2)
                       </span>
                     </div>
@@ -1196,53 +1296,75 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
                   </div>
                 )}
 
-                {/* Prompt to submit return reports */}
-                  {isTimeForReturn && (
-                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-lg p-3 shadow-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Camera className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-purple-900 text-sm mb-1">🔄 Ready to Return?</h4>
-                          <p className="text-xs text-purple-800 mb-2">
-                            {isRenter 
-                              ? "When returning the item, document its condition with photos."
-                              : "When receiving the item back, document its condition with photos."}
-                          </p>
-                          <Button
-                            onClick={() => setShowConditionForm('return')}
-                            size="sm"
-                            className="bg-purple-600 hover:bg-purple-700 w-full text-xs h-8"
-                          >
-                            <Camera className="w-3 h-3 mr-1" />
-                            Create Return Report
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {/* Return Report Prompt Card */}
+                {/* Return Report Prompt Card - Only when rental has ended and within 3 hours */}
                 {needsReturnReport && (
-                  <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-3 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Camera className="w-4 h-4 text-white" />
+                  <div className="bg-white border border-purple-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Camera className="w-5 h-5 text-purple-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-purple-900 text-sm mb-1">📸 Return Inspection Required</h4>
-                        <p className="text-xs text-purple-800 mb-2">
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Return Inspection Required</h4>
+                        <p className="text-sm text-gray-600 mb-3">
                           Document the item's condition upon return. This protects both parties.
+                          {hoursSinceEnd !== null && hoursSinceEnd >= 0 && (
+                            <span className="block mt-1 text-xs text-purple-600">
+                              {hoursSinceEnd <= RETURN_REPORT_DEADLINE_HOURS_AFTER 
+                                ? `You have ${Math.max(0, Math.ceil(RETURN_REPORT_DEADLINE_HOURS_AFTER - hoursSinceEnd))} hours remaining.`
+                                : 'Deadline passed.'}
+                            </span>
+                          )}
                         </p>
                         <Button
                           onClick={() => setShowConditionForm('return')}
                           size="sm"
-                          className="bg-purple-600 hover:bg-purple-700 w-full text-xs h-8"
+                          className="bg-purple-600 hover:bg-purple-700 text-white text-sm h-9 px-4"
                         >
-                          <Camera className="w-3 h-3 mr-1" />
+                          <Camera className="w-4 h-4 mr-2" />
                           Create Return Report
                         </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Info message if return window hasn't opened yet (before end date) */}
+                {currentRequest.status === 'paid' && 
+                 pickupReports.length === 2 && 
+                 !userReturnReport && 
+                 endDate && 
+                 hoursSinceEnd !== null && 
+                 hoursSinceEnd < 0 && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Return Report Available After Rental Ends</h4>
+                        <p className="text-sm text-gray-600">
+                          Return reports can be submitted after the rental end date ({format(endDate, 'MMMM d, yyyy')}). You'll have 3 hours to submit after the end date.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Warning if return report deadline passed */}
+                {currentRequest.status === 'paid' && 
+                 isReturnDeadlinePassed && 
+                 !userReturnReport && 
+                 endDate && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <AlertCircle className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-red-900 text-sm mb-1">Return Report Deadline Passed</h4>
+                        <p className="text-sm text-red-700">
+                          The deadline to submit return reports has passed (3 hours after rental end). Please contact support.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1250,10 +1372,10 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
                 {/* Show Return Reports */}
                 {returnReports.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="text-center">
-                      <span className="bg-purple-100 text-purple-800 text-[10px] font-semibold px-2 py-1 rounded-full inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="bg-purple-50 text-purple-700 text-xs font-medium px-3 py-1.5 rounded-full inline-flex items-center gap-2 border border-purple-200">
+                        <CheckCircle2 className="w-4 h-4" />
                         Return Reports ({returnReports.length}/2)
                       </span>
                     </div>
@@ -1284,23 +1406,23 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
                 {/* Extension Request Card */}
                 {canRequestExtension && (
-                  <div className="bg-lime-50 border-2 border-lime-200 rounded-lg p-3 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="w-8 h-8 bg-lime-500 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Clock className="w-4 h-4 text-white" />
+                  <div className="bg-white border border-amber-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-amber-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-lime-900 text-sm mb-1">⏰ Need More Time?</h4>
-                        <p className="text-xs text-lime-800 mb-2">
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Need More Time?</h4>
+                        <p className="text-sm text-gray-600 mb-3">
                           Request an extension for your rental period from the owner.
                         </p>
                         <Button
                           onClick={() => setShowExtensionForm(true)}
                           size="sm"
                           variant="outline"
-                          className="w-full border-lime-300 text-lime-700 hover:bg-lime-50 text-xs h-8"
+                          className="border-amber-400 text-amber-700 hover:bg-amber-50 hover:border-amber-500 text-sm h-9 px-4"
                         >
-                          <Clock className="w-4 h-4 mr-1" />
+                          <Clock className="w-4 h-4 mr-2" />
                           Request Extension
                         </Button>
                       </div>
@@ -1310,30 +1432,30 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
                 {/* Release Payment Card */}
                 {canReleasePayment && (
-                  <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                        <CheckCircle2 className="w-4 h-4 text-white" />
+                  <div className="bg-white border border-green-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-green-900 text-sm mb-1">✅ Ready to Complete</h4>
-                        <p className="text-xs text-green-800 mb-2">
-                          All reports submitted! You can now release the payment to complete this rental.
+                        <h4 className="font-semibold text-gray-900 text-sm mb-1">Ready to Complete</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Rental period has ended and all condition reports have been submitted. You can now release the payment to complete this rental.
                         </p>
                         {releaseError && (
-                          <Alert variant="destructive" className="mb-2">
-                            <AlertCircle className="h-3 w-3" />
-                            <AlertDescription className="text-[10px]">{releaseError}</AlertDescription>
+                          <Alert variant="destructive" className="mb-3">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">{releaseError}</AlertDescription>
                           </Alert>
                         )}
                         <Button
                           onClick={handleReleasePayment}
                           disabled={isUpdatingStatus}
                           size="sm"
-                          className="bg-green-600 hover:bg-green-700 w-full text-xs h-8"
+                          className="bg-green-600 hover:bg-green-700 text-white text-sm h-9 px-4"
                         >
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          {isUpdatingStatus ? 'Processing...' : `Release $${currentRequest.total_amount.toFixed(2)}`}
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          {isUpdatingStatus ? 'Processing...' : `Release $${rentalCost.toFixed(2)}`}
                         </Button>
                       </div>
                     </div>
@@ -1409,29 +1531,28 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
             {messages.length === 0 && !isLoading && conditionReports.length === 0 && extensionRequests.length === 0 && !showConditionForm && !showDisputeForm && !showExtensionForm && (
               <div className="text-center py-12">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <MessageSquare className="w-6 h-6 text-slate-400" />
+                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-gray-200">
+                  <MessageSquare className="w-8 h-8 text-gray-400" />
                 </div>
-                <p className="text-slate-500 font-medium text-sm">Start the conversation!</p>
-                <p className="text-slate-400 text-xs mt-1">Send a message to get started</p>
+                <p className="text-gray-700 font-semibold text-base">Start the conversation</p>
+                <p className="text-gray-500 text-sm mt-1">Send a message to get started</p>
               </div>
             )}
           </>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Fixed Bottom Actions - Simplified */}
-      <div className="flex-shrink-0 border-t border-slate-200 bg-white">
+      {/* Fixed Bottom Actions - Upwork-style */}
+      <div className="flex-shrink-0 border-t border-gray-200 bg-white">
         {/* Delete Chat Option */}
         {canDeleteChat && !showDeleteConfirm && (
-          <div className="p-3 bg-slate-50 border-b border-slate-200">
+          <div className="p-4 bg-gray-50 border-b border-gray-200">
             <Button
               onClick={() => setShowDeleteConfirm(true)}
               variant="outline"
-              className="w-full border-red-300 text-red-700 hover:bg-red-50 h-9 text-xs"
+              className="w-full border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 h-10 text-sm"
             >
-              <X className="w-3 h-3 mr-1" />
+              <X className="w-4 h-4 mr-2" />
               Delete Conversation
             </Button>
           </div>
@@ -1439,16 +1560,16 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
         {/* Delete Confirmation */}
         {showDeleteConfirm && (
-          <div className="p-3 bg-red-50 border-b border-red-200">
-            <div className="mb-2">
-              <p className="text-xs font-semibold text-red-900 mb-1">Delete this conversation?</p>
-              <p className="text-[10px] text-red-700">This will permanently delete all messages. This action cannot be undone.</p>
+          <div className="p-4 bg-red-50 border-b border-red-200">
+            <div className="mb-3">
+              <p className="text-sm font-semibold text-red-900 mb-1">Delete this conversation?</p>
+              <p className="text-xs text-red-700">This will permanently delete all messages. This action cannot be undone.</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 border-slate-300 text-xs h-8"
+                className="flex-1 border-gray-300 text-sm h-10"
                 disabled={isDeletingChat}
               >
                 Cancel
@@ -1456,7 +1577,7 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
               <Button
                 onClick={handleDeleteChat}
                 disabled={isDeletingChat}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-xs h-8"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-sm h-10"
               >
                 {isDeletingChat ? 'Deleting...' : 'Delete'}
               </Button>
@@ -1466,23 +1587,23 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
         {/* Approve/Decline Buttons */}
         {canApproveDecline && (
-          <div className="p-3 bg-slate-50 border-b border-slate-200">
-            <div className="flex gap-2">
+          <div className="p-4 bg-gray-50 border-b border-gray-200">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
                 onClick={handleDecline}
                 disabled={isUpdatingStatus}
-                className="flex-1 border-red-200 text-red-700 hover:bg-red-50 h-9 text-xs"
+                className="flex-1 border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 h-10 text-sm font-medium"
               >
-                <X className="w-3 h-3 mr-1" />
+                <X className="w-4 h-4 mr-2" />
                 Decline
               </Button>
               <Button
                 onClick={handleApprove}
                 disabled={isUpdatingStatus}
-                className="flex-1 bg-green-600 hover:bg-green-700 h-9 text-xs"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white h-10 text-sm font-medium"
               >
-                <Check className="w-3 h-3 mr-1" />
+                <Check className="w-4 h-4 mr-2" />
                 Approve
               </Button>
             </div>
@@ -1491,39 +1612,39 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
 
         {/* Payment Button */}
         {canPay && (
-          <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+          <div className="p-4 bg-blue-50 border-b border-blue-200">
             <Button
               onClick={handlePayment}
               disabled={isProcessingPayment}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 h-10 text-white font-semibold shadow-lg text-sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-white font-semibold shadow-sm text-sm mb-2"
             >
-              <CreditCard className="w-4 h-4 mr-2" />
+              <CreditCard className="w-5 h-5 mr-2" />
               {isProcessingPayment ? 'Processing...' : `Pay $${totalPayment.toFixed(2)}`}
             </Button>
-            <p className="text-[10px] text-slate-600 mt-1 text-center">
-              ${currentRequest.total_amount.toFixed(2)} rental + ${renterPlatformFee.toFixed(2)} fee + ${(item?.deposit || 0).toFixed(2)} deposit
+            <p className="text-xs text-gray-600 text-center">
+              ${rentalCost.toFixed(2)} rental + ${renterPlatformFee.toFixed(2)} fee + ${securityDeposit.toFixed(2)} deposit
             </p>
           </div>
         )}
 
         {/* Review & Dispute Actions */}
         {canLeaveReview && (
-          <div className="p-3 bg-slate-50 border-b border-slate-200 space-y-2">
+          <div className="p-4 bg-gray-50 border-b border-gray-200 space-y-2">
             <Button
               onClick={() => setShowReviewDialog(true)}
               variant="outline"
-              className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50 h-9 font-semibold text-xs"
+              className="w-full border-yellow-400 text-yellow-700 hover:bg-yellow-50 hover:border-yellow-500 h-10 font-medium text-sm"
             >
-              <Star className="w-3 h-3 mr-1" />
+              <Star className="w-4 h-4 mr-2" />
               Leave a Review
             </Button>
             {!showDisputeForm && (
               <Button
                 onClick={() => setShowDisputeForm(true)}
                 variant="outline"
-                className="w-full border-orange-300 text-orange-700 hover:bg-orange-50 h-9 text-xs"
+                className="w-full border-orange-400 text-orange-700 hover:bg-orange-50 hover:border-orange-500 h-10 text-sm"
               >
-                <AlertCircle className="w-3 h-3 mr-1" />
+                <AlertCircle className="w-4 h-4 mr-2" />
                 File a Dispute
               </Button>
             )}
@@ -1531,50 +1652,52 @@ export default function ChatWindow({ request, item, currentUser, onBack, onUpdat
         )}
 
         {!canLeaveReview && canFileDispute && !showDisputeForm && (
-          <div className="p-3 bg-slate-50 border-b border-slate-200">
+          <div className="p-4 bg-gray-50 border-b border-gray-200">
             <Button
               onClick={() => setShowDisputeForm(true)}
               variant="outline"
-              className="w-full border-orange-300 text-orange-700 hover:bg-orange-50 h-9 text-xs"
+              className="w-full border-orange-400 text-orange-700 hover:bg-orange-50 hover:border-orange-500 h-10 text-sm"
             >
-              <AlertCircle className="w-3 h-3 mr-1" />
+              <AlertCircle className="w-4 h-4 mr-2" />
               File a Dispute
             </Button>
           </div>
         )}
 
-        {/* Message Input - More compact */}
-        <div className="p-2">
-          <form onSubmit={sendMessage} className="flex gap-1.5 items-center">
+        {/* Message Input - Upwork-style clean design */}
+        <div className="p-4 bg-white">
+          <form onSubmit={sendMessage} className="flex gap-2 items-end">
             <ChatAttachments 
               onAttach={handleAttachmentSend}
               disabled={isSending || !!showConditionForm || showDisputeForm || showExtensionForm}
             />
-            <Input
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value);
-                setIsTyping(true);
-                updateTypingStatus(true);
-                if (typingTimeoutRef.current) {
-                  clearTimeout(typingTimeoutRef.current);
-                }
-                typingTimeoutRef.current = setTimeout(() => {
-                  setIsTyping(false);
-                  updateTypingStatus(false);
-                }, 3000);
-              }}
-              placeholder="Type message..."
-              className="flex-1 border-slate-300 focus:border-slate-500 rounded-lg h-9 text-sm"
-              disabled={isSending || !!showConditionForm || showDisputeForm || showExtensionForm}
-            />
+            <div className="flex-1 relative">
+              <Input
+                value={newMessage}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  setIsTyping(true);
+                  updateTypingStatus(true);
+                  if (typingTimeoutRef.current) {
+                    clearTimeout(typingTimeoutRef.current);
+                  }
+                  typingTimeoutRef.current = setTimeout(() => {
+                    setIsTyping(false);
+                    updateTypingStatus(false);
+                  }, 3000);
+                }}
+                placeholder="Type a message..."
+                className="w-full border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg h-11 text-sm pr-12 bg-gray-50 focus:bg-white transition-colors"
+                disabled={isSending || !!showConditionForm || showDisputeForm || showExtensionForm}
+              />
+            </div>
             <Button
               type="submit"
               disabled={isSending || !newMessage.trim() || !!showConditionForm || showDisputeForm || showExtensionForm}
               size="icon"
-              className="bg-slate-900 hover:bg-slate-800 rounded-lg h-9 w-9 flex-shrink-0 shadow-lg"
+              className="bg-blue-600 hover:bg-blue-700 rounded-lg h-11 w-11 flex-shrink-0 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5 text-white" />
             </Button>
           </form>
         </div>

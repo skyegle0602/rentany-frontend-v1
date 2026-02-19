@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import HowItWorks from "@/components/home/HowItWorks";
 import RecentlyViewed from "@/components/home/RecentlyViewed";
@@ -11,7 +11,7 @@ import Testerminal from "@/components/home/Testerminal";
 import TrustBadges from "@/components/home/TrustBadge";
 import dynamic from "next/dynamic";
 import { useLanguage } from "@/components/language/LanguageContext";
-import { getCurrentUser, type UserData } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { Loader2 } from "lucide-react";
 
 // Dynamically import ItemFilters to avoid SSR hydration issues with Radix UI Select
@@ -50,27 +50,57 @@ type ViewType = "list" | "map";
 export default function HomeContent() {
   const { t } = useLanguage();
   const router = useRouter();
-  const [checkingIntent, setCheckingIntent] = useState(true);
+  const searchParams = useSearchParams();
   
-  // Check user intent on mount
+  // Helper function to validate category
+  const isValidCategory = (cat: string): cat is CategoryValue => {
+    return ['all', 'electronics', 'tools', 'fashion', 'sports', 'vehicles', 'home', 'books', 'music', 'photography', 'other'].includes(cat);
+  };
+
+  const isValidAvailability = (value: string): value is AvailabilityFilterType => {
+    return ['all', 'available', 'unavailable'].includes(value);
+  };
+  
+  // Read category from URL params on mount and when params change
   useEffect(() => {
-    async function checkIntent() {
-      try {
-        const user = await getCurrentUser();
-        if (user && !user.intent) {
-          // User doesn't have intent set, redirect to onboarding
-          router.push("/onboarding");
-          return;
-        }
-        setCheckingIntent(false);
-      } catch (error) {
-        console.error("Error checking user intent:", error);
-        // On error, allow access (don't block user)
-        setCheckingIntent(false);
-      }
+    const categoryParam = searchParams?.get('category');
+    const availabilityParam = searchParams?.get('availability');
+    if (categoryParam && isValidCategory(categoryParam)) {
+      setSelectedCategory(categoryParam as CategoryValue);
+    } else if (!categoryParam) {
+      // If no category param, reset to 'all'
+      setSelectedCategory('all');
     }
-    checkIntent();
-  }, [router]);
+
+    if (availabilityParam && isValidAvailability(availabilityParam)) {
+      setAvailabilityFilter(availabilityParam as AvailabilityFilterType);
+    } else if (!availabilityParam) {
+      setAvailabilityFilter('all');
+    }
+  }, [searchParams]);
+
+  // Home hero stats (available items)
+  const [availableCount, setAvailableCount] = useState<number | null>(null);
+  const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setIsStatsLoading(true);
+        const res = await api.getItemsStats();
+        const count = res.success ? res.data?.total_available : undefined;
+        if (mounted) setAvailableCount(typeof count === "number" ? count : 0);
+      } catch {
+        if (mounted) setAvailableCount(0);
+      } finally {
+        if (mounted) setIsStatsLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -96,14 +126,16 @@ export default function HomeContent() {
   const [view, setView] = useState<ViewType>("list");
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Show loading while checking intent
-  if (checkingIntent) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
+  const handleShowAvailableItems = () => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.delete('category');
+    params.set('availability', 'available');
+    router.push(`/home?${params.toString()}`);
+    // Jump user down to the list
+    setTimeout(() => {
+      document.getElementById("all-items")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -137,13 +169,11 @@ export default function HomeContent() {
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             {/* Left Button - 3 items available */}
-            <button className="flex items-center justify-center gap-3 px-6 py-4 bg-[#333741] border border-white rounded-lg hover:bg-[#3d4451] transition-colors">
-              <svg
-                className="h-6 w-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+            <button
+              onClick={handleShowAvailableItems}
+              className="flex items-center justify-center gap-3 px-6 py-4 bg-[#333741] border border-white rounded-lg hover:bg-[#3d4451] transition-colors"
+            >
+              <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -151,9 +181,19 @@ export default function HomeContent() {
                   d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                 />
               </svg>
-              <span className="text-white font-medium">3 {t('home.itemsAvailable')}</span>
+              <span className="text-white font-medium flex items-center gap-2">
+                {isStatsLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("common.loading")}
+                  </>
+                ) : (
+                  <>
+                    {availableCount ?? 0} {t("home.itemsAvailable")}
+                  </>
+                )}
+              </span>
             </button>
-
             {/* Right Button - Growing community */}
             <button className="flex items-center justify-center gap-3 px-6 py-4 bg-[#333741] border border-white rounded-lg hover:bg-[#3d4451] transition-colors">
               <svg
@@ -272,14 +312,16 @@ export default function HomeContent() {
             </div>
           </div>
           {/* All Items Section */}
-          <AIIItems 
-            searchQuery={searchQuery}
-            locationQuery={locationQuery}
-            selectedCategory={selectedCategory}
-            priceRange={priceRange}
-            availabilityFilter={availabilityFilter}
-            sortBy={sortBy}
-          />
+          <div id="all-items">
+            <AIIItems 
+              searchQuery={searchQuery}
+              locationQuery={locationQuery}
+              selectedCategory={selectedCategory}
+              priceRange={priceRange}
+              availabilityFilter={availabilityFilter}
+              sortBy={sortBy}
+            />
+          </div>
         </>
       )}
       {/* How It Works Section */}

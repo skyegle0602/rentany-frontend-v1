@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, memo } from "react";
 import Link from 'next/link';
-import { api, getCurrentUser, uploadFile, redirectToSignIn, type UserData } from "@/lib/api-client";
+import { api, getCurrentUser, redirectToSignIn, type UserData } from "@/lib/api-client";
 import StarRating from '@/components/reviews/StarRating';
 import ChatWindow from '@/components/chat/ChatWindow';
 import DisputeForm from '@/components/disputes/DisputeForm';
@@ -71,6 +71,9 @@ interface RentalRequest {
   start_date: string;
   end_date: string;
   total_amount: number;
+  platform_fee?: number;
+  security_deposit?: number;
+  total_paid?: number;
   message?: string;
   created_date: string;
   updated_date: string;
@@ -82,13 +85,15 @@ interface Item {
   images?: string[];
   videos?: string[];
   daily_rate: number;
+  deposit?: number;
 }
 
 interface Review {
   id: string;
-  rental_request_id: string;
+  item_id?: string;
+  rental_request_id?: string;
   reviewer_email: string;
-  reviewee_email: string;
+  reviewee_email?: string;
   rating: number;
   comment: string;
   images: string[];
@@ -116,6 +121,281 @@ interface StripeTestResult {
   details?: string;
   hint?: string;
 }
+
+// RequestCard component moved outside to prevent re-renders from parent state changes
+const RequestCard = memo(({ 
+  request, 
+  type, 
+  item,
+  user,
+  requestReviews,
+  otherUser,
+  requestConditionReports,
+  onOpenChat,
+  onOpenReviewDialog,
+  onOpenReportUserDialog,
+  onShowAgreementPreview,
+  onShowDisputeForm
+}: { 
+  request: RentalRequest; 
+  type: 'sent' | 'received'; 
+  item?: Item;
+  user: UserData | null;
+  requestReviews: Review[];
+  otherUser?: UserData;
+  requestConditionReports: ConditionReport[];
+  onOpenChat: (request: RentalRequest) => void;
+  onOpenReviewDialog: (request: RentalRequest, reviewType: string) => void;
+  onOpenReportUserDialog: (user: UserData) => void;
+  onShowAgreementPreview: (requestId: string) => void;
+  onShowDisputeForm: (requestId: string) => void;
+}) => {
+  const rentalCost = request.total_amount || 0;
+  const platformFee = typeof request.platform_fee === 'number' ? request.platform_fee : rentalCost * 0.15;
+  const securityDeposit =
+    typeof request.security_deposit === 'number'
+      ? request.security_deposit
+      : (item?.deposit || 0);
+  const totalPaid =
+    typeof request.total_paid === 'number'
+      ? request.total_paid
+      : rentalCost + platformFee + securityDeposit;
+
+  const reviewType = type === 'sent' ? 'for_owner' : 'for_renter';
+  const hasBeenReviewed = requestReviews.some(review => review.reviewer_email === user?.email &&
+    (review.review_type === reviewType || review.review_type === (reviewType === 'for_owner' ? 'for_renter' : 'for_owner'))
+  );
+
+  const pickupReports = requestConditionReports.filter(r => r.report_type === 'pickup');
+  const returnReports = requestConditionReports.filter(r => r.report_type === 'return');
+  const hasBothReports = pickupReports.length >= 1 && returnReports.length >= 1;
+
+  const isOwner = user?.email === request.owner_email;
+  const isPaid = request.status === 'paid';
+  const isCompleted = request.status === 'completed';
+
+  const canReleasePayment = isOwner && isPaid && hasBothReports;
+  const canFileDispute = isPaid || isCompleted;
+  const canLeaveReview = isCompleted && !hasBeenReviewed;
+
+  const itemImage = item?.images?.[0] || item?.videos?.[0] || "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-3 sm:mb-4"
+    >
+      <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm hover:shadow-xl transition-shadow">
+        <CardHeader className="pb-2 sm:pb-3 p-3 sm:p-6">
+          <div className="flex items-start gap-2 sm:gap-4">
+            <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-lg overflow-hidden bg-slate-200">
+              {item ? (
+                <img
+                  src={itemImage}
+                  alt={item.title}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-sm sm:text-base md:text-lg line-clamp-2 leading-tight">
+                  {item?.title || "Loading..."}
+                </CardTitle>
+                <Badge className={`${statusColors[request.status as keyof typeof statusColors]} border shadow-sm flex-shrink-0 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5`}>
+                  {request.status}
+                </Badge>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-[11px] sm:text-sm text-slate-600 mt-1 sm:mt-2">
+                <div className="flex items-center gap-1 min-w-0">
+                  <UserIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <span className="truncate">
+                    {type === "sent" ? `To: ` : `From: `}
+                    {otherUser ? (
+                      otherUser.username ? (
+                        <Link href={`/PublicProfile?username=${otherUser.username}`} className="font-medium hover:underline">
+                          @{otherUser.username}
+                        </Link>
+                      ) : (
+                        <span className="font-medium">{otherUser.full_name}</span>
+                      )
+                    ) : (
+                      <span className="text-slate-400">Loading...</span>
+                    )}
+                  </span>
+                </div>
+                {request.status !== 'inquiry' && (
+                  <>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="whitespace-nowrap">
+                        {format(new Date(request.start_date), "MMM d")} - {format(new Date(request.end_date), "MMM d")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <div className="flex flex-col leading-tight">
+                        <span className="whitespace-nowrap font-medium">
+                          ${totalPaid.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-slate-500 whitespace-nowrap">
+                          Rental ${rentalCost.toFixed(2)} • Fee ${platformFee.toFixed(2)} • Deposit ${securityDeposit.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-6 pt-0">
+          {request.status === 'approved' && type === 'sent' && (
+            <PaymentDeadline request={request} />
+          )}
+
+          {request.message && (
+            <div className="bg-slate-50 rounded-lg p-2 sm:p-3 mb-2">
+              <p className="text-xs sm:text-sm text-slate-700 line-clamp-3">"{request.message}"</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Button
+              onClick={() => onOpenChat(request)}
+              variant="outline"
+              className="w-full border-slate-300 hover:bg-slate-50 h-9 sm:h-10 text-xs sm:text-sm"
+            >
+              <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Chat
+            </Button>
+
+            <Button
+              onClick={() => onShowAgreementPreview(request.id as any)}
+              variant="outline"
+              className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 h-9 sm:h-10 text-xs sm:text-sm"
+            >
+              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              View Agreement
+            </Button>
+
+            {canReleasePayment && (
+              <Button
+                onClick={() => onOpenChat(request)}
+                className="w-full bg-green-600 hover:bg-green-700 text-white h-9 sm:h-10 text-xs sm:text-sm"
+              >
+                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Release Payment
+              </Button>
+            )}
+
+            {canFileDispute && (
+              <Button
+                onClick={() => onShowDisputeForm(request.id as any)}
+                variant="outline"
+                className="w-full border-orange-300 text-orange-700 hover:bg-orange-50 h-9 sm:h-10 text-xs sm:text-sm"
+              >
+                <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                File a Dispute
+              </Button>
+            )}
+
+            {canLeaveReview && (
+              <Button
+                variant="outline"
+                className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50 h-9 sm:h-10 text-xs sm:text-sm"
+                onClick={() => onOpenReviewDialog(request, reviewType)}
+              >
+                <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Leave a Review
+              </Button>
+            )}
+
+            {/* Download Receipt for completed/paid rentals */}
+            {(request.status === 'completed' || request.status === 'paid') && (
+              <Button
+                onClick={async () => {
+                  try {
+                    if (!request.id) {
+                      console.error('❌ request.id is undefined:', request);
+                      alert('Error: Rental request ID is missing');
+                      return;
+                    }
+                    console.log('📥 Downloading receipt for rental_request_id:', request.id);
+                    const response = await api.downloadReceipt(request.id);
+                    if (!response.success || !response.data) {
+                      const errorMsg = response.error || 'Failed to download receipt';
+                      if (errorMsg.includes('only available for paid or completed')) {
+                        alert('Receipt is only available for paid or completed rentals. Current status: ' + request.status);
+                      } else {
+                        alert(errorMsg);
+                      }
+                      return;
+                    }
+                    const blob = response.data;
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `receipt-${request.id.slice(0, 8)}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                  } catch (error) {
+                    console.error('Error downloading receipt:', error);
+                    const errorMsg = error instanceof Error ? error.message : 'Failed to download receipt. Please try again.';
+                    alert(errorMsg);
+                  }
+                }}
+                variant="outline"
+                className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 h-9 sm:h-10 text-xs sm:text-sm"
+              >
+                <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Download Receipt
+              </Button>
+            )}
+
+            {otherUser && user && otherUser.email !== user.email && (
+              <Button
+                  onClick={() => onOpenReportUserDialog(otherUser)}
+                  variant="outline"
+                  className="w-full border-red-300 text-red-700 hover:bg-red-50 h-9 sm:h-10 text-xs sm:text-sm"
+              >
+                  <Flag className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                  Report User
+              </Button>
+            )}
+          </div>
+
+          <div className="text-[10px] sm:text-xs text-slate-400 mt-2">
+            Submitted {format(new Date(request.created_date), "MMM d, yyyy")} at {format(new Date(request.created_date), "h:mm a")}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}, (prevProps, nextProps) => {
+  // Only re-render if props relevant to this specific request changed
+  return (
+    prevProps.request.id === nextProps.request.id &&
+    prevProps.request.status === nextProps.request.status &&
+    prevProps.request.updated_date === nextProps.request.updated_date &&
+    prevProps.item?.id === nextProps.item?.id &&
+    prevProps.user?.email === nextProps.user?.email &&
+    prevProps.requestReviews.length === nextProps.requestReviews.length &&
+    prevProps.otherUser?.email === nextProps.otherUser?.email &&
+    prevProps.requestConditionReports.length === nextProps.requestConditionReports.length
+  );
+});
+
+RequestCard.displayName = 'RequestCard';
 
 export default function RequestsPage() {
   const [user, setUser] = useState<UserData | null>(null);
@@ -150,6 +430,32 @@ export default function RequestsPage() {
     loadData();
   }, []);
 
+  // Restore chat from URL on page load/refresh
+  useEffect(() => {
+    // Only restore chat after data is loaded and user is available
+    if (!isLoading && user && sentRequests && receivedRequests) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestId = urlParams.get('request_id');
+      
+      // Only restore if we have a request_id in URL and chat is not already open
+      if (requestId && !selectedChat) {
+        // Find the request in either sent or received requests
+        const allRequests = [...sentRequests, ...receivedRequests];
+        const request = allRequests.find(r => r.id === requestId);
+        
+        if (request) {
+          console.log('🔄 Restoring chat from URL:', requestId);
+          setSelectedChat(request);
+        } else {
+          // Request not found, remove from URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete('request_id');
+          window.history.replaceState({}, '', url.toString());
+        }
+      }
+    }
+  }, [isLoading, user, sentRequests, receivedRequests, selectedChat]);
+
   useEffect(() => {
     const handlePaymentConfirmation = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -158,6 +464,15 @@ export default function RequestsPage() {
       const requestId = urlParams.get('request_id');
 
       if (success === 'true' && sessionId && requestId) {
+          // Validate session_id - should be a real Stripe session ID, not the placeholder
+          if (sessionId.includes('{CHECKOUT_SESSION_ID}') || sessionId.includes('%7BCHECKOUT_SESSION_ID%7D') || !sessionId.startsWith('cs_')) {
+              console.warn('Invalid session_id detected, skipping payment confirmation:', sessionId);
+              // Clean up URL and return early
+              const cleanUrl = window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+              return;
+          }
+
           setIsConfirmingPayment(true);
           setPageError(null);
           try {
@@ -171,6 +486,13 @@ export default function RequestsPage() {
 
               if (response.success && response.data && response.data.success) {
                   await loadData();
+                  
+                  // After successful payment, keep request_id in URL for chat, but remove payment-related params
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('success');
+                  url.searchParams.delete('session_id');
+                  // Keep request_id for chat restoration
+                  window.history.replaceState({}, document.title, url.toString());
               } else {
                   throw new Error(response.error || response.data?.error || 'Payment confirmation failed');
               }
@@ -180,8 +502,7 @@ export default function RequestsPage() {
               setPageError(errorObj.response?.data?.error || (error instanceof Error ? error.message : String(error)) || "Payment confirmation failed");
           } finally {
               setIsConfirmingPayment(false);
-              const cleanUrl = window.location.pathname;
-              window.history.replaceState({}, document.title, cleanUrl);
+              // URL cleanup is handled in the success case above
           }
       }
     };
@@ -249,10 +570,31 @@ export default function RequestsPage() {
       setLoadingStage('Loading item details...');
       console.log('⏱️ Step 3: Loading items...');
 
-      const itemsResponse = await api.request<Item[]>('/items').catch(() => ({ success: false, data: [] }));
-      const allItems = itemsResponse.success && itemsResponse.data ? itemsResponse.data : [];
+      // Collect unique item IDs from active requests only
+      const itemIds = new Set<string>();
+      activeSentReqs.forEach(req => {
+        if (req.item_id) itemIds.add(req.item_id);
+      });
+      activeReceivedReqs.forEach(req => {
+        if (req.item_id) itemIds.add(req.item_id);
+      });
+
       const itemsMap: Record<string, Item> = {};
-      allItems.forEach(item => itemsMap[item.id] = item);
+      
+      // Only fetch items that are actually needed
+      if (itemIds.size > 0) {
+        const itemIdArray = Array.from(itemIds);
+        // Use the new ids query parameter to fetch multiple items at once
+        const idsParam = itemIdArray.join(',');
+        const itemsResponse = await api.request<Item[]>(`/items?ids=${encodeURIComponent(idsParam)}`).catch(() => ({ success: false, data: [] }));
+        
+        if (itemsResponse.success && itemsResponse.data) {
+          itemsResponse.data.forEach(item => {
+            itemsMap[item.id] = item;
+          });
+        }
+      }
+      
       setItems(itemsMap);
       console.log(`✅ Items loaded: ${Object.keys(itemsMap).length} items (${Date.now() - startTime}ms)`);
 
@@ -341,22 +683,43 @@ export default function RequestsPage() {
   const loadBackgroundDataForActiveRequests = async (activeRequest: RentalRequest[]) => {
     try {
       const requestIds = activeRequest.map(r => r.id);
+      // Get unique item IDs from active requests (reviews are linked to items, not rental requests)
+      const itemIds = [...new Set(activeRequest.map(r => r.item_id).filter(Boolean))];
 
-      // Load reviews for active requests only
+      // Load reviews for active requests only - filter by item_ids
       console.log('Background: Loading reviews...');
       await delay(3000);
       try {
-        const reviewsResponse = await api.request<Review[]>('/reviews');
-        const allReviews = reviewsResponse.success && reviewsResponse.data ? reviewsResponse.data : [];
+        // Fetch reviews for items in active requests
         const reviewsMap: Record<string, Review[]> = {};
-        allReviews.forEach(review => {
-          if (requestIds.includes(review.rental_request_id)) {
-            if (!reviewsMap[review.rental_request_id]) {
-              reviewsMap[review.rental_request_id] = [];
+        if (itemIds.length > 0) {
+          // Fetch reviews for each item (backend supports item_id filter)
+          // Note: Reviews don't have rental_request_id, so we need to map them back
+          const reviewPromises = itemIds.map(async (itemId) => {
+            try {
+              const reviewsResponse = await api.request<Review[]>(`/reviews?item_id=${encodeURIComponent(itemId)}`);
+              return reviewsResponse.success && reviewsResponse.data ? reviewsResponse.data : [];
+            } catch (err) {
+              console.error(`Error loading reviews for item ${itemId}:`, err);
+              return [];
             }
-            reviewsMap[review.rental_request_id].push(review);
-          }
-        });
+          });
+          const allReviewsArrays = await Promise.all(reviewPromises);
+          const allReviews = allReviewsArrays.flat();
+          
+          // Map reviews back to rental_request_id by matching item_id
+          allReviews.forEach(review => {
+            // Find which rental requests have this item_id
+            const matchingRequests = activeRequest.filter(req => req.item_id === review.item_id);
+            matchingRequests.forEach(req => {
+              if (!reviewsMap[req.id]) {
+                reviewsMap[req.id] = [];
+              }
+              // Add rental_request_id to review for frontend compatibility
+              reviewsMap[req.id].push({ ...review, rental_request_id: req.id } as Review);
+            });
+          });
+        }
         setReviews(reviewsMap);
         console.log('✅ Reviews loaded');
       } catch (err) {
@@ -364,7 +727,7 @@ export default function RequestsPage() {
         setReviews({}); // Set empty object so UI doesn't break
       }
 
-      // Load condition reports for active requests only - with retry logic
+      // Load condition reports for active requests only - using rental_request_ids parameter
       console.log('Background: Loading condition reports...');
       await delay(5000); // Increased delay
       let reportRetries = 0;
@@ -372,19 +735,23 @@ export default function RequestsPage() {
       
       while (reportRetries <= maxRetries) {
         try {
-          const reportsResponse = await api.request<ConditionReport[]>('/condition-reports');
-          const allReports = reportsResponse.success && reportsResponse.data ? reportsResponse.data : [];
-          const reportsMap: Record<string, ConditionReport[]> = {};
-          allReports.forEach(report => {
-            if (requestIds.includes(report.rental_request_id)) {
+          // Use the new rental_request_ids parameter to fetch only needed reports
+          if (requestIds.length > 0) {
+            const idsParam = requestIds.join(',');
+            const reportsResponse = await api.request<ConditionReport[]>(`/condition-reports?rental_request_ids=${encodeURIComponent(idsParam)}`);
+            const fetchedReports = reportsResponse.success && reportsResponse.data ? reportsResponse.data : [];
+            const reportsMap: Record<string, ConditionReport[]> = {};
+            fetchedReports.forEach(report => {
               if (!reportsMap[report.rental_request_id]) {
                 reportsMap[report.rental_request_id] = [];
               }
               reportsMap[report.rental_request_id].push(report);
-            }
-          });
-          setConditionReports(reportsMap);
-          console.log('✅ Condition reports loaded');
+            });
+            setConditionReports(reportsMap);
+            console.log('✅ Condition reports loaded');
+          } else {
+            setConditionReports({});
+          }
           break; // Success, exit retry loop
         } catch (err) {
           reportRetries++;
@@ -416,18 +783,12 @@ export default function RequestsPage() {
     return items[itemId];
   };
 
-  const handleOpenChat = (request: RentalRequest) => {
-    setSelectedChat(request);
-  };
-
   const handleCloseChat = () => {
     setSelectedChat(null);
-  };
-
-  const handleOpenReviewDialog = (request: RentalRequest, reviewType: string) => {
-    setCurrentReviewRequest({ ...request, reviewType });
-    setReviewData({ rating: 0, comment: '', images: [] });
-    setIsReviewDialogOpen(true);
+    // Remove request_id from URL when closing chat
+    const url = new URL(window.location.href);
+    url.searchParams.delete('request_id');
+    window.history.pushState({}, '', url.toString());
   };
 
   const handleCloseReviewDialog = () => {
@@ -443,7 +804,7 @@ export default function RequestsPage() {
     setIsUploadingReviewImage(true);
     try {
       const uploadPromises = files.map(async (file) => {
-        const result = await uploadFile(file);
+        const result = await api.uploadFile(file);
         const file_url = result.file_url;
         return file_url;
       });
@@ -496,30 +857,25 @@ export default function RequestsPage() {
     }
   };
 
-  const handleOpenReportUserDialog = (reportedUser: UserData) => {
-    setUserToReport(reportedUser);
-    setReportComment('');
-    setIsReportUserDialogOpen(true);
-  };
-
   const handleCloseReportUserDialog = () => {
     setIsReportUserDialogOpen(false);
     setUserToReport(null);
     setReportComment('');
   };
 
-  const handleReportSubmit = async () => {
+  const handleReportSubmit = async (e?: React.FormEvent) => {
+      if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+      }
       if (!userToReport || !reportComment.trim()) return;
       setIsSubmittingReport(true);
       try {
-          await api.request('/user-reports', {
-            method: 'POST',
-            body: JSON.stringify({
+          await api.createUserReport({
               reporter_email: user?.email || '',
-              reported_email: userToReport?.email ||'',
+              reported_email: userToReport?.email || '',
               reason: 'other',
               description: reportComment
-            })
           });
 
           alert("User reported successfully. Our team will review it shortly.");
@@ -552,218 +908,33 @@ export default function RequestsPage() {
     }
   };
 
-  const RequestCard = ({ request, type, item }: { request: RentalRequest; type: 'sent' | 'received'; item?: Item }) => {
-    const reviewType = type === 'sent' ? 'for_owner' : 'for_renter';
-    const requestReviews = reviews[request.id] || [];
-    const hasBeenReviewed = requestReviews.some(review => review.reviewer_email === user?.email &&
-      (review.review_type === reviewType || review.review_type === (reviewType === 'for_owner' ? 'for_renter' : 'for_owner'))
-    );
+  // Handlers wrapped in useCallback to prevent RequestCard re-renders
+  const handleOpenChat = useCallback((request: RentalRequest) => {
+    setSelectedChat(request);
+    const url = new URL(window.location.href);
+    url.searchParams.set('request_id', request.id);
+    window.history.pushState({}, '', url.toString());
+  }, []);
 
-    const otherUserEmail = type === 'sent' ? request.owner_email : request.renter_email;
-    const otherUser = usersMap[otherUserEmail];
+  const handleOpenReviewDialog = useCallback((request: RentalRequest, reviewType: string) => {
+    setCurrentReviewRequest({ ...request, reviewType });
+    setReviewData({ rating: 0, comment: '', images: [] });
+    setIsReviewDialogOpen(true);
+  }, []);
 
-    const requestReports = conditionReports[request.id] || [];
-    const pickupReports = requestReports.filter(r => r.report_type === 'pickup');
-    const returnReports = requestReports.filter(r => r.report_type === 'return');
-    const hasBothReports = pickupReports.length >= 1 && returnReports.length >= 1;
+  const handleOpenReportUserDialog = useCallback((reportedUser: UserData) => {
+    setUserToReport(reportedUser);
+    setReportComment('');
+    setIsReportUserDialogOpen(true);
+  }, []);
 
-    const isOwner = user?.email === request.owner_email;
-    const isPaid = request.status === 'paid';
-    const isCompleted = request.status === 'completed';
+  const handleShowAgreementPreview = useCallback((requestId: string) => {
+    setShowAgreementPreview(requestId as any);
+  }, []);
 
-    const canReleasePayment = isOwner && isPaid && hasBothReports;
-    const canFileDispute = isPaid || isCompleted;
-    const canLeaveReview = isCompleted && !hasBeenReviewed;
-
-    const itemImage = item?.images?.[0] || item?.videos?.[0] || "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop";
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-3 sm:mb-4"
-      >
-        <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm hover:shadow-xl transition-shadow">
-          <CardHeader className="pb-2 sm:pb-3 p-3 sm:p-6">
-            <div className="flex items-start gap-2 sm:gap-4">
-              <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-lg overflow-hidden bg-slate-200">
-                {item ? (
-                  <img
-                    src={itemImage}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-sm sm:text-base md:text-lg line-clamp-2 leading-tight">
-                    {item?.title || "Loading..."}
-                  </CardTitle>
-                  <Badge className={`${statusColors[request.status as keyof typeof statusColors]} border shadow-sm flex-shrink-0 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5`}>
-                    {request.status}
-                  </Badge>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-[11px] sm:text-sm text-slate-600 mt-1 sm:mt-2">
-                  <div className="flex items-center gap-1 min-w-0">
-                    <UserIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span className="truncate">
-                      {type === "sent" ? `To: ` : `From: `}
-                      {otherUser ? (
-                        otherUser.username ? (
-                          <Link href={`/PublicProfile?username=${otherUser.username}`} className="font-medium hover:underline">
-                            @{otherUser.username}
-                          </Link>
-                        ) : (
-                          <span className="font-medium">{otherUser.full_name}</span>
-                        )
-                      ) : (
-                        <span className="text-slate-400">Loading...</span>
-                      )}
-                    </span>
-                  </div>
-                  {request.status !== 'inquiry' && (
-                    <>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span className="whitespace-nowrap">
-                          {format(new Date(request.start_date), "MMM d")} - {format(new Date(request.end_date), "MMM d")}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span>${request.total_amount.toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-3 sm:p-6 pt-0">
-            {request.status === 'approved' && type === 'sent' && (
-              <PaymentDeadline request={request} />
-            )}
-
-            {request.message && (
-              <div className="bg-slate-50 rounded-lg p-2 sm:p-3 mb-2">
-                <p className="text-xs sm:text-sm text-slate-700 line-clamp-3">"{request.message}"</p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Button
-                onClick={() => handleOpenChat(request)}
-                variant="outline"
-                className="w-full border-slate-300 hover:bg-slate-50 h-9 sm:h-10 text-xs sm:text-sm"
-              >
-                <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                Open Chat
-              </Button>
-
-              <Button
-                onClick={() => setShowAgreementPreview(request.id as any)}
-                variant="outline"
-                className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 h-9 sm:h-10 text-xs sm:text-sm"
-              >
-                <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                View Agreement
-              </Button>
-
-              {canReleasePayment && (
-                <Button
-                  onClick={() => handleOpenChat(request)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white h-9 sm:h-10 text-xs sm:text-sm"
-                >
-                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  Release Payment
-                </Button>
-              )}
-
-              {canFileDispute && (
-                <Button
-                  onClick={() => setShowDisputeForm(request.id as any)}
-                  variant="outline"
-                  className="w-full border-orange-300 text-orange-700 hover:bg-orange-50 h-9 sm:h-10 text-xs sm:text-sm"
-                >
-                  <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  File a Dispute
-                </Button>
-              )}
-
-              {canLeaveReview && (
-                <Button
-                  variant="outline"
-                  className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50 h-9 sm:h-10 text-xs sm:text-sm"
-                  onClick={() => handleOpenReviewDialog(request, reviewType)}
-                >
-                  <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  Leave a Review
-                </Button>
-              )}
-
-              {/* Download Receipt for completed/paid rentals */}
-              {(request.status === 'completed' || request.status === 'paid') && (
-                <Button
-                  onClick={async () => {
-                    try {
-                      const response = await api.request<Blob>(`/receipts?rental_request_id=${request.id}`, {
-                        method: 'GET',
-                        headers: {
-                          'Accept': 'application/pdf'
-                        }
-                      });
-                      if (!response.success || !response.data) {
-                        throw new Error('Failed to generate receipt');
-                      }
-                      const blob = response.data;
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `receipt-${request.id.slice(0, 8)}.pdf`;
-                      document.body.appendChild(a);
-                      a.click();
-                      window.URL.revokeObjectURL(url);
-                      a.remove();
-                    } catch (error) {
-                      console.error('Error downloading receipt:', error);
-                      alert('Failed to download receipt. Please try again.');
-                    }
-                  }}
-                  variant="outline"
-                  className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 h-9 sm:h-10 text-xs sm:text-sm"
-                >
-                  <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  Download Receipt
-                </Button>
-              )}
-
-              {otherUser && user && otherUser.email !== user.email && (
-                <Button
-                    onClick={() => handleOpenReportUserDialog(otherUser)}
-                    variant="outline"
-                    className="w-full border-red-300 text-red-700 hover:bg-red-50 h-9 sm:h-10 text-xs sm:text-sm"
-                >
-                    <Flag className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                    Report User
-                </Button>
-              )}
-            </div>
-
-            <div className="text-[10px] sm:text-xs text-slate-400 mt-2">
-              Submitted {format(new Date(request.created_date), "MMM d, yyyy")} at {format(new Date(request.created_date), "h:mm a")}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
-  };
+  const handleShowDisputeForm = useCallback((requestId: string) => {
+    setShowDisputeForm(requestId as any);
+  }, []);
 
   if (isConfirmingPayment) {
     return (
@@ -1027,14 +1198,26 @@ export default function RequestsPage() {
               <TabsContent value="sent" className="p-3 sm:p-6">
                 {sentRequests.length > 0 ? (
                   <div>
-                    {sentRequests.map((request) => (
-                      <RequestCard
-                        key={request.id}
-                        request={request}
-                        type="sent"
-                        item={getItemForRequest(request.item_id)}
-                      />
-                    ))}
+                    {sentRequests.map((request) => {
+                      const otherUserEmail = request.owner_email;
+                      return (
+                        <RequestCard
+                          key={request.id}
+                          request={request}
+                          type="sent"
+                          item={getItemForRequest(request.item_id)}
+                          user={user}
+                          requestReviews={reviews[request.id] || []}
+                          otherUser={usersMap[otherUserEmail]}
+                          requestConditionReports={conditionReports[request.id] || []}
+                          onOpenChat={handleOpenChat}
+                          onOpenReviewDialog={handleOpenReviewDialog}
+                          onOpenReportUserDialog={handleOpenReportUserDialog}
+                          onShowAgreementPreview={handleShowAgreementPreview}
+                          onShowDisputeForm={handleShowDisputeForm}
+                        />
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-12">
@@ -1048,14 +1231,26 @@ export default function RequestsPage() {
               <TabsContent value="received" className="p-3 sm:p-6">
                 {receivedRequests.length > 0 ? (
                   <div>
-                    {receivedRequests.map((request) => (
-                      <RequestCard
-                        key={request.id}
-                        request={request}
-                        type="received"
-                        item={getItemForRequest(request.item_id)}
-                      />
-                    ))}
+                    {receivedRequests.map((request) => {
+                      const otherUserEmail = request.renter_email;
+                      return (
+                        <RequestCard
+                          key={request.id}
+                          request={request}
+                          type="received"
+                          item={getItemForRequest(request.item_id)}
+                          user={user}
+                          requestReviews={reviews[request.id] || []}
+                          otherUser={usersMap[otherUserEmail]}
+                          requestConditionReports={conditionReports[request.id] || []}
+                          onOpenChat={handleOpenChat}
+                          onOpenReviewDialog={handleOpenReviewDialog}
+                          onOpenReportUserDialog={handleOpenReportUserDialog}
+                          onShowAgreementPreview={handleShowAgreementPreview}
+                          onShowDisputeForm={handleShowDisputeForm}
+                        />
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-12">
@@ -1161,7 +1356,7 @@ export default function RequestsPage() {
                 <DialogHeader>
                     <DialogTitle>Report User</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <form onSubmit={handleReportSubmit} className="space-y-4 py-4">
                     <p>You are reporting: <strong>{userToReport?.full_name || userToReport?.email}</strong></p>
                     <div>
                         <Label htmlFor="report-comment">Reason for report</Label>
@@ -1173,22 +1368,23 @@ export default function RequestsPage() {
                             rows={5}
                         />
                     </div>
-                </div>
-                <DialogFooter>
-                    <Button
-                        variant="outline"
-                        onClick={handleCloseReportUserDialog}
-                        disabled={isSubmittingReport}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleReportSubmit}
-                        disabled={isSubmittingReport || !reportComment.trim()}
-                    >
-                        {isSubmittingReport ? "Submitting..." : "Submit Report"}
-                    </Button>
-                </DialogFooter>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleCloseReportUserDialog}
+                            disabled={isSubmittingReport}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            disabled={isSubmittingReport || !reportComment.trim()}
+                        >
+                            {isSubmittingReport ? "Submitting..." : "Submit Report"}
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
       </div>

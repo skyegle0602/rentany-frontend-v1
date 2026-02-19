@@ -38,26 +38,26 @@ import { format, subDays, isAfter, startOfDay, endOfDay } from "date-fns";
 import Link from 'next/link';
 // Batch create Stripe accounts for all users
 // This calls a backend API endpoint
-async function batchCreateStripeAccounts(): Promise<any> {
-  try {
-    const response = await api.request('/admin/stripe/batch-create-accounts', {
-      method: 'POST',
-    });
+// async function batchCreateStripeAccounts(): Promise<any> {
+//   try {
+//     const response = await api.request('/admin/stripe/batch-create-accounts', {
+//       method: 'POST',
+//     });
     
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to create Stripe accounts');
-    }
+//     if (!response.success) {
+//       throw new Error(response.error || 'Failed to create Stripe accounts');
+//     }
     
-    return response;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    // If endpoint doesn't exist (404), provide helpful message
-    if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
-      throw new Error('Batch Stripe account creation endpoint is not yet implemented. Please implement POST /api/admin/stripe/batch-create-accounts on the backend.');
-    }
-    throw error;
-  }
-}
+//     return response;
+//   } catch (error) {
+//     const errorMessage = error instanceof Error ? error.message : String(error);
+//     // If endpoint doesn't exist (404), provide helpful message
+//     if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+//       throw new Error('Batch Stripe account creation endpoint is not yet implemented. Please implement POST /api/admin/stripe/batch-create-accounts on the backend.');
+//     }
+//     throw error;
+//   }
+// }
 import {
   LineChart,
   Line,
@@ -94,6 +94,7 @@ interface RentalRequest {
   owner_email: string;
   status: string;
   total_amount: number;
+  platform_fee?: number;
   created_date?: string;
   updated_date?: string;
 }
@@ -248,7 +249,8 @@ export default function AdminDashboardPage() {
         return;
       }
 
-      // Fetch all data in parallel
+      // Fetch all data in parallel with limits to reduce memory usage
+      // For dashboard stats, we load recent data (last 1000 records) which should be sufficient for accurate statistics
       const [
         usersResponse,
         itemsResponse,
@@ -259,9 +261,9 @@ export default function AdminDashboardPage() {
         reviewsResponse,
         payoutsResponse
       ] = await Promise.all([
-        api.request<User[]>('/users'),
-        api.getItems(),
-        api.request<RentalRequest[]>('/rental-requests'),
+        api.request<User[]>('/users'), // Users endpoint doesn't support limit yet, but user count is usually manageable
+        api.getItems({ limit: 1000, sort_by: 'newest' }), // Limit to 1000 most recent items
+        api.request<RentalRequest[]>(`/rental-requests?sort=-created_date&limit=1000`), // Limit to 1000 most recent rental requests
         api.request<Dispute[]>('/disputes').catch(() => ({ success: false, data: [] })),
         api.request<UserReport[]>('/user-reports').catch(() => ({ success: false, data: [] })),
         api.request<FraudReport[]>('/fraud-reports').catch(() => ({ success: false, data: [] })),
@@ -323,16 +325,16 @@ export default function AdminDashboardPage() {
         : [];
 
       const totalRevenue = completedAndPaidRentals.reduce((sum, r) =>
-        sum + (r.total_amount * 0.15), 0
+        sum + (typeof r.platform_fee === 'number' ? r.platform_fee : (r.total_amount * 0.15)), 0
       );
 
       const revenueThisMonth = completedAndPaidRentals
         .filter(r => r.created_date && isAfter(new Date(r.created_date), oneMonthAgo))
-        .reduce((sum, r) => sum + (r.total_amount * 0.15), 0);
+        .reduce((sum, r) => sum + (typeof r.platform_fee === 'number' ? r.platform_fee : (r.total_amount * 0.15)), 0);
 
       const revenueThisWeek = completedAndPaidRentals
         .filter(r => r.created_date && isAfter(new Date(r.created_date), oneWeekAgo))
-        .reduce((sum, r) => sum + (r.total_amount * 0.15), 0);
+        .reduce((sum, r) => sum + (typeof r.platform_fee === 'number' ? r.platform_fee : (r.total_amount * 0.15)), 0);
 
       const revenueLastMonth = completedAndPaidRentals
         .filter(r => {
@@ -340,7 +342,7 @@ export default function AdminDashboardPage() {
           const created = new Date(r.created_date);
           return isAfter(created, twoMonthsAgo) && !isAfter(created, oneMonthAgo);
         })
-        .reduce((sum, r) => sum + (r.total_amount * 0.15), 0);
+        .reduce((sum, r) => sum + (typeof r.platform_fee === 'number' ? r.platform_fee : (r.total_amount * 0.15)), 0);
 
       const revenueGrowth = revenueLastMonth > 0
         ? ((revenueThisMonth - revenueLastMonth) / revenueLastMonth * 100).toFixed(1)
@@ -395,7 +397,7 @@ export default function AdminDashboardPage() {
               categoryStats[item.category] = { items: 0, rentals: 0, revenue: 0 };
             }
             categoryStats[item.category].rentals++;
-            categoryStats[item.category].revenue += rental.total_amount * 0.15;
+            categoryStats[item.category].revenue += (typeof rental.platform_fee === 'number' ? rental.platform_fee : (rental.total_amount * 0.15));
           }
         });
       }
@@ -413,7 +415,7 @@ export default function AdminDashboardPage() {
           return rentalDate >= dayStart && rentalDate <= dayEnd;
         });
 
-        const dayRevenue = dayRentals.reduce((sum, r) => sum + (r.total_amount * 0.15), 0);
+        const dayRevenue = dayRentals.reduce((sum, r) => sum + (typeof r.platform_fee === 'number' ? r.platform_fee : (r.total_amount * 0.15)), 0);
 
         dailyRevenue.push({
           date: format(date, 'MMM d'),
@@ -458,10 +460,11 @@ export default function AdminDashboardPage() {
       // Add recent rentals - ENSURE ARRAYS
       if (Array.isArray(completedRentals)) {
         completedRentals.slice(0, 5).forEach(r => {
+          const fee = (typeof (r as any).platform_fee === 'number' ? (r as any).platform_fee : (r.total_amount * 0.15));
           recentActivity.push({
             type: 'rental_completed',
             date: r.updated_date || r.created_date || new Date().toISOString(),
-            description: `Rental completed - $${(r.total_amount * 0.15).toFixed(2)} revenue`,
+            description: `Rental completed - $${fee.toFixed(2)} revenue`,
             icon: 'dollar'
           });
         });
@@ -963,13 +966,13 @@ export default function AdminDashboardPage() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-4">
                   <Button variant="outline" className="w-full justify-start" asChild>
-                    <Link href="/AdminUserReports">
+                    <Link href="/admin/user-reports">
                       <AlertTriangle className="w-4 h-4 mr-2" />
                       User Reports ({stats.pendingReports})
                     </Link>
                   </Button>
                   <Button variant="outline" className="w-full justify-start" asChild>
-                    <Link href="/AdminFraudReports">
+                    <Link href="/admin/fraud-reports">
                       <Shield className="w-4 h-4 mr-2" />
                       Fraud Reports ({stats.pendingFraudReports})
                     </Link>
@@ -978,7 +981,7 @@ export default function AdminDashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Stripe Account Management */}
+            {/* Stripe Account Management
             <Card className="border-0 shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1068,7 +1071,7 @@ export default function AdminDashboardPage() {
                   )}
                 </Button>
               </CardContent>
-            </Card>
+            </Card> */}
           </TabsContent>
 
           {/* Revenue Tab */}
@@ -1201,30 +1204,30 @@ export default function AdminDashboardPage() {
                 <CardContent>
                   <div className="space-y-3">
                     <Button variant="outline" className="w-full justify-start" asChild>
-                      <Link href="/AdminDisputes">
+                      <Link href="/admin/disputes">
                         <AlertTriangle className="w-4 h-4 mr-2 text-red-600" />
                         Review Disputes ({stats.openDisputes})
                       </Link>
                     </Button>
                     <Button variant="outline" className="w-full justify-start" asChild>
-                      <Link href="/AdminUserReports">
+                      <Link href="/admin/user-reports">
                         <Users className="w-4 h-4 mr-2 text-yellow-600" />
                         Review User Reports ({stats.pendingReports})
                       </Link>
                     </Button>
                     <Button variant="outline" className="w-full justify-start" asChild>
-                      <Link href="/AdminFraudReports">
+                      <Link href="/admin/fraud-reports">
                         <Shield className="w-4 h-4 mr-2 text-purple-600" />
                         Review Fraud Reports ({stats.pendingFraudReports})
                       </Link>
                     </Button>
                     {/* Added button for Review Pending Requests */}
-                    <Button variant="outline" className="w-full justify-start" asChild>
-                      <Link href="/AdminRentalRequests">
-                        <Clock className="w-4 h-4 mr-2 text-blue-600" />
-                        Review Pending Requests ({stats.pendingRequests})
-                      </Link>
-                    </Button>
+                     <Button variant="outline" className="w-full justify-start" asChild>
+                       <Link href="/admin/review-pending-request">
+                         <Clock className="w-4 h-4 mr-2 text-blue-600" />
+                         Review Pending Requests ({stats.pendingRequests})
+                       </Link>
+                     </Button>
                   </div>
                 </CardContent>
               </Card>

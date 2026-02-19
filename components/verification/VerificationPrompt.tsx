@@ -151,8 +151,8 @@ export default function VerificationPrompt({ currentUser, message = "Connect you
         </div>
       )}
 
-      {/* For renters, check if payment method is connected */}
-      {currentUser?.intent === 'renter' && !(currentUser as any).stripe_payment_method_id && (
+      {/* All users can both rent and lend - show both options */}
+      {!(currentUser as any)?.stripe_payment_method_id && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <p className="text-sm text-blue-800 mb-3">
             Connect your card to make rental payments.
@@ -160,87 +160,50 @@ export default function VerificationPrompt({ currentUser, message = "Connect you
         </div>
       )}
 
-      {(currentUser?.verification_status === 'unverified' || !currentUser?.verification_status) && (
-        <div className="space-y-3">
-          {/* Show both buttons when intent is 'both' */}
-          {currentUser?.intent === 'both' ? (
-            <>
-              <Button
-                onClick={handleConnectRenterPayment}
-                disabled={isLoadingRenter || (currentUser as any).stripe_payment_method_id}
-                className="w-full bg-blue-600 hover:bg-blue-700 h-12"
-              >
-                {isLoadingRenter ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting Card...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Connect Card
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={handleVerify}
-                disabled={isLoading || currentUser?.verification_status === 'verified'}
-                variant="outline"
-                className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 h-12"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting Bank...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Connect Bank Account
-                  </>
-                )}
-              </Button>
-            </>
-          ) : (
-            /* Show single button for renter or owner */
-            <Button
-              onClick={currentUser?.intent === 'renter' ? handleConnectRenterPayment : handleVerify}
-              disabled={
-                currentUser?.intent === 'renter' 
-                  ? (isLoadingRenter || !!(currentUser as any).stripe_payment_method_id)
-                  : (isLoading || currentUser?.verification_status === 'verified')
-              }
-              className="w-full bg-blue-600 hover:bg-blue-700 h-12"
-            >
-              {currentUser?.intent === 'renter' ? (
-                isLoadingRenter ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting Card...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Connect Card
-                  </>
-                )
-              ) : (
-                isLoading ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting Bank...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Connect Bank Account
-                  </>
-                )
-              )}
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="space-y-3">
+        {/* Show card connection button if not connected */}
+        {!(currentUser as any)?.stripe_payment_method_id && (
+          <Button
+            onClick={handleConnectRenterPayment}
+            disabled={isLoadingRenter}
+            className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+          >
+            {isLoadingRenter ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Connecting Card...
+              </>
+            ) : (
+              <>
+                <Shield className="w-4 h-4 mr-2" />
+                Connect Card (to Rent)
+              </>
+            )}
+          </Button>
+        )}
+        
+        {/* Show bank connection button if not verified */}
+        {(currentUser?.verification_status === 'unverified' || !currentUser?.verification_status) && (
+          <Button
+            onClick={handleVerify}
+            disabled={isLoading || currentUser?.verification_status === 'verified'}
+            variant="outline"
+            className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 h-12"
+          >
+            {isLoading ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Connecting Bank...
+              </>
+            ) : (
+              <>
+                <Shield className="w-4 h-4 mr-2" />
+                Connect Bank Account (to Lend)
+              </>
+            )}
+          </Button>
+        )}
+      </div>
 
       <p className="text-xs text-slate-500 text-center">
         We use Stripe to securely process payments. Your payment information is encrypted and securely handled by Stripe.

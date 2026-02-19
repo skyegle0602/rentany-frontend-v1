@@ -2,7 +2,7 @@
 
 
 import React, { useState, useRef } from 'react';
-import { api, uploadFile } from '@/lib/api-client';
+import { api } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,7 +60,7 @@ export default function ConditionReportForm({
       setCompressionProgress('Uploading...'); // Update message for upload
 
       const uploadPromises = compressedFiles.map(async (file) => {
-        const result = await uploadFile(file);
+        const result = await api.uploadFile(file);
         return result.file_url;
       });
       

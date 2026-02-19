@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react';
-import { api, getCurrentUser, sendEmail, type UserData } from '@/lib/api-client';
+import { api, getCurrentUser, type UserData } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -112,35 +112,7 @@ export default function ExtensionRequest({ rentalRequest, item, onSuccess }: Ext
         console.error('Failed to create notification:', notificationError);
       }
 
-      // Send email to owner
-      try {
-        await sendEmail({
-          to: rentalRequest.owner_email,
-          subject: `Extension Request for ${item?.title || 'Your Item'}`,
-          body: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #1e293b;">Extension Request</h2>
-              <p>${user.full_name || user.email} would like to extend their rental period.</p>
-              
-              <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <p><strong>Item:</strong> ${item?.title || 'Your Item'}</p>
-                <p><strong>Original End Date:</strong> ${format(parseISO(rentalRequest.end_date), 'PPP')}</p>
-                <p><strong>New End Date:</strong> ${format(parseISO(newEndDate), 'PPP')}</p>
-                <p><strong>Extra Days:</strong> ${extraDays} days</p>
-                <p><strong>Additional Payment:</strong> $${additionalCost.toFixed(2)}</p>
-              </div>
-              
-              ${message ? `<p><strong>Message from renter:</strong><br/>${message}</p>` : ''}
-              
-              <p>Please review this request in your conversations.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Request</a></p>
-            </div>
-          `,
-          from_name: "Rentable"
-        });
-      } catch (emailError) {
-        console.error('Failed to send extension request email:', emailError);
-      }
+      // Email notifications removed - using in-app notifications and chat instead
 
       alert('Extension request sent successfully!');
       if (onSuccess) onSuccess();

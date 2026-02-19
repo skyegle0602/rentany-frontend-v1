@@ -48,8 +48,9 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createPageUrl } from "@/lib/utils";
+import { canRent } from "@/lib/user-capabilities";
 import { format, differenceInDays, parseISO } from "date-fns";
-import { api, getCurrentUser, redirectToSignIn, sendEmail, createViewedItem } from '@/lib/api-client';
+import { api, getCurrentUser, redirectToSignIn, type UserData } from '@/lib/api-client';
 import ShareButtons from '@/components/items/ShareButtons';
 import SimilarItems from '@/components/items/SimilarItems';
 import AvailabilityCalendar from '@/components/calendar/AvailabilityCalendar';
@@ -224,7 +225,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
             if (user && user.email) {
               console.log('📊 Tracking view for item:', itemId, 'user:', user.email);
               // Use the helper function for consistency
-              const viewResponse = await createViewedItem({
+              const viewResponse = await api.createViewedItem({
                 user_email: user.email,
                 item_id: itemId,
                 viewed_date: new Date().toISOString(),
@@ -303,11 +304,13 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       if (days > 0) {
         const minDays = item.min_rental_days || 1;
         const baseCost = calculateRentalCost(Math.max(days, minDays));
-        const fee = baseCost * 0.15;
+        const fee = baseCost * 0.15; // Platform fee (15% of rental cost, paid by renter)
+        const deposit = item.deposit || 0; // Security deposit
+        const totalToPay = baseCost + fee + deposit; // Renter pays: rental + fee + deposit
         setRentalCosts({
           rentalCost: baseCost,
           platformFee: fee,
-          totalCost: baseCost + fee
+          totalCost: totalToPay, // Total amount renter needs to pay
         });
       } else {
         setRentalCosts({ rentalCost: 0, platformFee: 0, totalCost: 0 });
@@ -396,17 +399,10 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       return;
     }
 
-    // Check if user is owner (cannot rent)
-    if (currentUser.intent === 'owner') {
-      alert("You need to switch your account type to Renter or Both to book items.");
-      return;
-    }
-
-    // Check payment method for renters and both (admins are exempt)
-    const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
-    const isRenterOrBoth = currentUser.intent === 'renter' || currentUser.intent === 'both';
+    // Capability check: Rent items requires stripe_payment_method_id
+    const isAdmin = currentUser.role === 'admin';
     
-    if (currentUser.role !== 'admin' && isRenterOrBoth && !hasPaymentMethod) {
+    if (!canRent(currentUser as UserData, isAdmin)) {
       alert("You must connect your card before renting items.");
       return;
     }
@@ -438,8 +434,6 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         return;
       }
 
-      const totalCost = rentalCosts.rentalCost;
-
       // Calculate start_date and end_date from selected dates (for backend compatibility)
       const sortedDates = [...selectedDates].sort();
       // Ensure dates are in ISO string format for backend
@@ -448,12 +442,16 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
 
       // Check if item has instant booking enabled - set initial status accordingly
       const initialStatus = item.instant_booking ? "approved" : "pending";
+      // IMPORTANT: If renter includes a message, always set to "pending" to require owner approval
+      // This ensures owners can respond to questions/negotiations before approving
+      // const hasMessage = rentalForm.message && rentalForm.message.trim().length > 0;
+      // const initialStatus = (item.instant_booking && !hasMessage) ? "approved" : "pending";
       
       // Get owner email - use owner.email if available, otherwise fallback to item.created_by
       const ownerEmail = owner?.email || item.created_by;
       console.log('Owner email: ', ownerEmail);
-      // Validate required fields
-      if (!item.id || !currentUser?.email || !ownerEmail || !startDate || !endDate || totalCost === undefined || totalCost === null) {
+      // Validate required fields (total_amount is no longer sent - backend calculates it)
+      if (!item.id || !currentUser?.email || !ownerEmail || !startDate || !endDate) {
         alert("Missing required information. Please ensure all fields are filled correctly.");
         setIsSubmittingRequest(false);
         return;
@@ -466,7 +464,8 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         owner_email: ownerEmail,
         start_date: startDate,
         end_date: endDate,
-        total_amount: totalCost
+        // Note: total_amount is calculated by backend for security
+        // Frontend calculation (rentalCosts) is only for display purposes
       });
 
       const requestResponse = await api.createRentalRequest({
@@ -475,7 +474,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         owner_email: ownerEmail,
         start_date: startDate,
         end_date: endDate,
-        total_amount: totalCost,
+        // total_amount is NOT sent - backend calculates it from dates and item pricing
         message: rentalForm.message || "",
         status: initialStatus
       });
@@ -581,16 +580,9 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
           footerText: 'Thank you for being part of the Rentable community!'
         });
 
-        if (item.created_by) {
-          await sendEmail({
-            to: item.created_by,
-            subject: item.instant_booking ? `✅ New Instant Booking for ${item.title}` : `🔔 New Rental Request for ${item.title}`,
-            body: emailBody,
-            from_name: "Rentable"
-          });
-        }
+        // Email notifications removed - using in-app notifications and chat instead
       } catch (emailError) {
-        console.error("Failed to send email notification:", emailError);
+        // Email sending is optional - errors are ignored
       }
 
       // Store data for success dialog
@@ -1009,49 +1001,30 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
               {item && item.availability && currentUser?.email !== item.created_by &&
                 <div className="space-y-6">
                   {(() => {
-                    // Check if user is owner (cannot rent)
-                    if (currentUser?.intent === 'owner') {
-                      return (
-                        <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
-                          <CardContent className="p-6 text-center">
-                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <AlertCircle className="w-6 h-6 text-slate-600" />
-                            </div>
-                            <h3 className="font-semibold text-slate-900 mb-2">Switch to Renter or Both to book</h3>
-                            <p className="text-slate-600 mb-4">
-                              You need to switch your account type to Renter or Both to book items.
-                            </p>
-                          </CardContent>
-                        </Card>
-                      );
-                    }
-
-                    // For renters and both: check payment method ID
-                    const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
-                    const isRenterOrBoth = currentUser?.intent === 'renter' || currentUser?.intent === 'both';
+                    // Capability check: Rent items requires stripe_payment_method_id
                     const isAdmin = currentUser?.role === 'admin';
 
-                    // Show alert if no payment method (unless admin)
-                    if (!isAdmin && isRenterOrBoth && !hasPaymentMethod) {
+                    // Show alert if cannot rent (unless admin)
+                    if (!canRent(currentUser as UserData, isAdmin)) {
                       return (
                         <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
                           <CardContent className="p-6 text-center">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <AlertCircle className="w-6 h-6 text-red-600" />
+                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <AlertCircle className="w-6 h-6 text-blue-600" />
                             </div>
-                            <h3 className="font-semibold text-slate-900 mb-2">Card Connection Required</h3>
+                            <h3 className="font-semibold text-slate-900 mb-2">Connect card to rent</h3>
                             <p className="text-slate-600 mb-4">
-                              {t('itemDetails.verifyToRent')}
+                              Connect your payment card to make rental payments and start renting items.
                             </p>
                             <div className="flex items-center justify-center gap-2 mb-4">
                               <Badge className="bg-slate-100 text-slate-800 border-slate-200 border flex items-center gap-1">
                                 <Shield className="w-3 h-3" />
-                                Not connected
+                                Card not connected
                               </Badge>
                             </div>
                             <VerificationPrompt
                               currentUser={currentUser as VerificationUser | null}
-                              message={t('itemDetails.verifyIdentity')} />
+                              message="Connect your card to rent this item" />
                           </CardContent>
                         </Card>
                       );
@@ -1062,8 +1035,10 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
                        <>
                          <AvailabilityCalendar 
                            itemId={item.id} 
-                           selectionMode="multiple"
-                           onDateChange={handleDateChange} 
+                           selectionMode="range"
+                           onDateChange={handleDateChange}
+                           noticePeriodHours={item.notice_period_hours || 24}
+                           sameDayPickup={item.same_day_pickup || false}
                          />
 
                       <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">

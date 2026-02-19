@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Upload, User as UserIcon, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { compressMultipleImages } from '@/components/utils/imageCompressor';
-import { uploadFile, api, type UserData } from '@/lib/api-client';
+import { api, type UserData } from '@/lib/api-client';
 
 interface ProfilePictureUploadProps {
   currentUser: UserData | null;
@@ -36,7 +36,7 @@ export default function ProfilePictureUpload({ currentUser, onUpdate }: ProfileP
       }
 
       const compressedFile = compressedFiles[0];
-      const response = await uploadFile(compressedFile);
+      const response = await api.uploadFile(compressedFile);
       
       // Update user profile picture
       const updateResponse = await api.updateUser({ profile_picture: response.file_url });

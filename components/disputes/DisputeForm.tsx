@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { api, getCurrentUser, uploadFile, type UserData } from '@/lib/api-client';
+import { api, sendNotification, getCurrentUser, type UserData } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -102,7 +102,7 @@ export default function DisputeForm({ rentalRequest, item, onSuccess }: DisputeF
       setCompressionProgress('Uploading...');
 
       const uploadPromises = compressedFiles.map(async (file) => {
-        const result = await uploadFile(file);
+        const result = await api.uploadFile(file);
         return result.file_url;
       });
       
@@ -160,25 +160,21 @@ export default function DisputeForm({ rentalRequest, item, onSuccess }: DisputeF
       // Send notification to the other party
       // TODO: Implement notifications endpoint in backend
       try {
-        await api.request('/notifications', {
-          method: 'POST',
-          body: JSON.stringify({
+        await api.sendNotification({
             user_email: againstEmail,
             type: 'dispute',
             title: '⚠️ A Dispute Has Been Filed',
             message: `A dispute has been filed regarding "${item?.title || 'your rental'}". Reason: ${formData.reason.replace('_', ' ')}. Please review the details in the disputes section.`,
             related_id: newDispute.id,
-            link: '/Disputes'
-          })
-        });
+            link: '/disputes'
+          });
       } catch (error) {
         console.error('Failed to send notification:', error);
       }
 
-      // Notify all admins
-      const usersResponse = await api.request<UserData[]>('/users');
-      const allUsers = usersResponse.success && usersResponse.data ? usersResponse.data : [];
-      const admins = allUsers.filter(u => u.role === 'admin');
+      // Notify all admins - fetch only admin users
+      const usersResponse = await api.request<UserData[]>(`/users?role=admin`);
+      const admins = usersResponse.success && usersResponse.data ? usersResponse.data : [];
       
       for (const admin of admins) {
         try {
@@ -190,7 +186,7 @@ export default function DisputeForm({ rentalRequest, item, onSuccess }: DisputeF
               title: '🚨 New Dispute Filed - Admin Action Required',
               message: `A new dispute has been filed for "${item?.title || 'a rental'}". Reason: ${formData.reason.replace('_', ' ')}. Filed by: ${currentUser.email}. Please review in Admin Disputes.`,
               related_id: newDispute.id,
-              link: '/AdminDisputes'
+              link: '/admin/disputes'
             })
           });
         } catch (error) {

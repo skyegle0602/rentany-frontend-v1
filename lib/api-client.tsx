@@ -47,6 +47,14 @@ interface ApiResponse<T> {
   error?: string
 }
 
+export interface ItemsStatsResponse {
+  total_available: number
+  by_category: Array<{
+    category: string
+    count: number
+  }>
+}
+
 // Type definitions
 export interface ItemAvailabilityData {
   id?: string;
@@ -70,7 +78,19 @@ export interface UserData {
   email: string;
   username?: string;
   verification_status?: 'verified' | 'pending' | 'failed' | 'unverified';
-  intent?: 'renter' | 'owner' | 'both'; // User's intended role on the platform
+  intent?: 'renter' | 'owner' | 'both'; // DEPRECATED: Capability is now determined by payment setup, not intent. Kept for backward compatibility.
+  
+  // Stripe connection fields (source of truth for capabilities)
+  stripe_customer_id?: string;
+  stripe_payment_method_id?: string; // Required for renting
+  stripe_account_id?: string; // Required for lending/receiving payouts
+  payouts_enabled?: boolean; // Required for lending/receiving payouts
+  
+  // Computed capabilities (not stored in DB, computed dynamically)
+  can_rent?: boolean; // Derived: !!stripe_payment_method_id
+  can_list?: boolean; // Derived: always true (everyone can list)
+  can_lend?: boolean; // Derived: !!(stripe_account_id && payouts_enabled)
+  
   [key: string]: any;
 }
 
@@ -83,6 +103,15 @@ export interface FileUploadResponse {
   file_url: string;
   file_id?: string;
   file_name?: string;
+}
+
+export interface NotificationResponse {
+  user_email: string;
+  type: string;
+  title: string;
+  message: string;
+  related_id?: string;
+  link?: string;
 }
 
 class ApiClient {
@@ -99,8 +128,12 @@ class ApiClient {
         }
       }
 
+      // Only set Content-Type to JSON if not already specified and not requesting PDF
+      const isPdfRequest = options.headers && 
+        (options.headers as any)['Accept']?.includes('application/pdf')
+      
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        ...(!isPdfRequest && !(options.headers as any)?.['Content-Type'] ? { 'Content-Type': 'application/json' } : {}),
         ...options.headers,
       }
 
@@ -118,7 +151,7 @@ class ApiClient {
         credentials: 'include', // For HTTP-only cookies (required for Clerk)
       })
 
-      // Check if response is ok before trying to parse JSON
+      // Check if response is ok before trying to parse
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`
         try {
@@ -131,6 +164,16 @@ class ApiClient {
         return {
           success: false,
           error: errorMessage,
+        }
+      }
+
+      // Handle PDF/binary responses
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/pdf')) {
+        const blob = await response.blob()
+        return {
+          success: true,
+          data: blob as T,
         }
       }
 
@@ -150,10 +193,17 @@ class ApiClient {
         data: data.data || data,
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorMessage = error instanceof Error ? error.message : String(error) || 'Unknown error'
       const isNetworkError = errorMessage.includes('Failed to fetch') || 
                             errorMessage.includes('NetworkError') ||
-                            errorMessage.includes('Network request failed')
+                            errorMessage.includes('Network request failed') ||
+                            errorMessage.includes('ERR_NETWORK') ||
+                            errorMessage.includes('ERR_INTERNET_DISCONNECTED')
+      
+      // Check if this is a suppressible endpoint (expected to fail if user not logged in)
+      const shouldSuppressError = endpoint.includes('/notifications') || 
+                                   endpoint.includes('/users/me') ||
+                                   endpoint === '/users/me'
       
       // Provide more helpful error messages
       let userFriendlyError = 'Network error - Could not connect to server'
@@ -163,17 +213,37 @@ class ApiClient {
 2. CORS is configured correctly
 3. Network connectivity is available`
         
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === 'development' && !shouldSuppressError) {
           console.error('❌ Network error details:', {
             error: errorMessage,
+            errorType: error?.constructor?.name || typeof error,
             url: `${API_BASE}${endpoint}`,
             apiBase: API_BASE,
             endpoint: endpoint,
+            stack: error instanceof Error ? error.stack : undefined,
+          })
+        }
+      } else {
+        // Log non-network errors (unless suppressed)
+        if (process.env.NODE_ENV === 'development' && !shouldSuppressError) {
+          console.error('❌ API request error:', {
+            error: errorMessage,
+            errorType: error?.constructor?.name || typeof error,
+            url: `${API_BASE}${endpoint}`,
+            endpoint: endpoint,
+            stack: error instanceof Error ? error.stack : undefined,
           })
         }
       }
       
-      console.error('API request error:', error)
+      // For suppressible endpoints, return a more graceful error response
+      if (shouldSuppressError) {
+        return {
+          success: false,
+          error: 'Not authenticated', // Generic error for suppressed endpoints
+        }
+      }
+      
       return {
         success: false,
         error: userFriendlyError,
@@ -239,7 +309,10 @@ class ApiClient {
     availability?: boolean
     page?: number
     limit?: number
+    offset?: number
+    skip?: number
     sort_by?: string
+    exclude_id?: string
   }) {
     const query = new URLSearchParams()
     if (params) {
@@ -250,6 +323,10 @@ class ApiClient {
       })
     }
     return this.request(`/items?${query.toString()}`)
+  }
+
+  async getItemsStats(): Promise<ApiResponse<ItemsStatsResponse>> {
+    return this.request<ItemsStatsResponse>('/items/stats')
   }
 
   async getItem(id: string) {
@@ -309,6 +386,22 @@ class ApiClient {
     data: Omit<ItemAvailabilityData, 'id' | 'created_at'>
   ): Promise<ApiResponse<ItemAvailabilityData>> {
     return this.request<ItemAvailabilityData>('/item-availability', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async createListingReport(
+    data: {
+      item_id: string;
+      reporter_email: string;
+      reason: string;
+      description: string;
+      evidence_urls?: string[];
+      status?: string;
+    }
+  ): Promise<ApiResponse<any>> {
+    return this.request<any>('/reports/listing', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -401,6 +494,21 @@ class ApiClient {
   async updateUser(data: any) {
     return this.request('/users/me', {
       method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  // User Reports
+  async createUserReport(data: {
+    reporter_email: string
+    reported_email: string
+    reason: 'harassment' | 'spam' | 'fraud' | 'inappropriate_content' | 'other'
+    description: string
+    evidence_urls?: string[]
+    status?: 'pending' | 'under_review' | 'resolved' | 'dismissed'
+  }) {
+    return this.request('/reports/user', {
+      method: 'POST',
       body: JSON.stringify(data),
     })
   }
@@ -513,7 +621,31 @@ class ApiClient {
       method: 'DELETE',
     })
   }
-}
+
+  // Receipts
+  /**
+   * Download a PDF receipt for a rental request
+   * @param rentalRequestId - The ID of the rental request
+   * @returns Promise with Blob data for the PDF receipt
+   */
+  async downloadReceipt(rentalRequestId: string): Promise<ApiResponse<Blob>> {
+    return this.request<Blob>(`/receipts?rental_request_id=${encodeURIComponent(rentalRequestId)}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/pdf',
+      },
+    })
+  }
+
+  async sendNotification(data: NotificationResponse): Promise<ApiResponse<any>>{
+    return this.request('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+
+    }
+  }
+
 
 export const api = new ApiClient()
 
@@ -645,7 +777,26 @@ export async function getCurrentUser(): Promise<UserData | null> {
         // Silently return null for unauthenticated users (this is expected behavior)
         return null
       }
-      // Log other errors
+      // Handle "Not authenticated" - expected when user is not logged in, don't log as error
+      if (response.error?.includes('Not authenticated') || response.error?.includes('Unauthorized')) {
+        return null // Silently return null for unauthenticated users
+      }
+
+      // Handle "User not found" - might be a transient sync issue, try to sync manually
+      if (response.error?.includes('User not found')) {
+        // Try to force sync the user from Clerk
+        try {
+          const syncResponse = await api.request<UserData>('/users/sync', { method: 'POST' })
+          if (syncResponse.success && syncResponse.data) {
+            return syncResponse.data as UserData
+          }
+        } catch (syncError) {
+          // If sync fails, just return null (user might not exist in Clerk)
+          console.warn('User not found and sync failed, returning null')
+        }
+        return null
+      }
+      // Log other unexpected errors (but not authentication errors)
       console.error('Failed to get current user:', response.error)
       return null
     }
@@ -670,9 +821,7 @@ export async function createVerificationSession(): Promise<VerificationSessionRe
   return response.data
 }
 
-export async function uploadFile(file: File): Promise<FileUploadResponse> {
-  return api.uploadFile(file)
-}
+// uploadFile - use api.uploadFile() directly (no wrapper needed)
 
 // AI Chat helper
 export interface AskItemQuestionResponse {
@@ -730,15 +879,66 @@ export async function getViewedItems(userEmail: string): Promise<ViewedItemData[
   try {
     const response = await api.getViewedItems(userEmail)
     if (!response.success || !response.data) {
+      // Silently return empty array if no data (not an error condition)
       return []
     }
     return response.data
   } catch (error) {
-    console.error('Error fetching viewed items:', error)
+    // Only log if it's not a network error (network errors are expected if backend is down)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const isNetworkError = errorMessage.includes('Failed to fetch') || 
+                          errorMessage.includes('NetworkError') ||
+                          errorMessage.includes('Network request failed') ||
+                          errorMessage.includes('Cannot connect to backend server')
+    
+    if (!isNetworkError) {
+      console.error('Error fetching viewed items:', error)
+    }
+    // Return empty array for all errors (network or otherwise) to prevent UI breakage
     return []
   }
 }
 
-export async function createViewedItem(data: { user_email: string; item_id: string; viewed_date?: string; view_count?: number }): Promise<ApiResponse<any>> {
-  return api.createViewedItem(data)
+// createViewedItem - use api.createViewedItem() directly (no wrapper needed)
+
+// Listing Reports
+export interface ListingReportData {
+  id: string;
+  item_id: string;
+  reporter_email: string;
+  reason: string;
+  description: string;
+  evidence_urls?: string[];
+  status: string;
+  admin_notes?: string;
+  reviewed_by?: string;
+  reviewed_date?: string;
+  created_date: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export async function createListingReport(
+  data: {
+    item_id: string;
+    reporter_email: string;
+    reason: string;
+    description: string;
+    evidence_urls?: string[];
+    status?: string;
+  }
+): Promise<ListingReportData> {
+  const response = await api.createListingReport(data)
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to create listing report')
+  }
+  return response.data
+}
+
+export async function sendNotification(data: NotificationResponse): Promise<any> {
+  const response = await api.sendNotification(data)
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to send notification')
+  }
+  return response.data
 }

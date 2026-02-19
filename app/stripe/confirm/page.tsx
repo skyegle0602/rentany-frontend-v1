@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ interface StripeStatusData {
   payouts_enabled_stripe?: boolean
 }
 
-export default function StripeConfirmPage() {
+function StripeConfirmContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isChecking, setIsChecking] = useState(true)
@@ -216,5 +216,22 @@ export default function StripeConfirmPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function StripeConfirmPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardContent className="text-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-slate-600">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <StripeConfirmContent />
+    </Suspense>
   )
 }

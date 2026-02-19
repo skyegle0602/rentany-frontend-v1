@@ -15,6 +15,9 @@ interface RentalRequest {
   owner_email: string;
   status: string;
   total_amount: number;
+  platform_fee?: number;
+  security_deposit?: number;
+  total_paid?: number;
   start_date?: string;
   end_date?: string;
   updated_date: string;
@@ -111,9 +114,10 @@ export default function TransactionHistory() {
       // Add rental earnings
       allRentals.forEach((rental: RentalRequest) => {
         const item = itemsMap[rental.item_id];
+        // Owner receives full rental cost. Platform fee is paid by renter (not deducted from owner payout).
         const grossAmount = rental.total_amount;
-        const platformFee = grossAmount * 0.15;
-        const netAmount = grossAmount - platformFee;
+        const platformFee = typeof rental.platform_fee === 'number' ? rental.platform_fee : grossAmount * 0.15;
+        const netAmount = grossAmount;
 
         transactionList.push({
           id: rental.id,
@@ -226,7 +230,7 @@ export default function TransactionHistory() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-red-600 mb-1">Platform Fees</p>
+                <p className="text-xs text-red-600 mb-1">Platform Fees (paid by renters)</p>
                 <p className="text-xl font-bold text-red-700">${totalFees.toFixed(2)}</p>
               </div>
               <TrendingDown className="w-8 h-8 text-red-600 opacity-50" />
@@ -331,8 +335,8 @@ export default function TransactionHistory() {
                               <p className="font-semibold text-slate-900">${(transaction.grossAmount || 0).toFixed(2)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-slate-500">Fee (15%)</p>
-                              <p className="font-semibold text-red-700">-${(transaction.platformFee || 0).toFixed(2)}</p>
+                              <p className="text-xs text-slate-500">Platform Fee</p>
+                              <p className="font-semibold text-slate-700">${(transaction.platformFee || 0).toFixed(2)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-slate-500">Net</p>

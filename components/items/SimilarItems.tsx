@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ItemCard from '@/components/items/ItemCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { api } from '@/lib/api-client';
 
 interface Item {
   id: string;
@@ -26,51 +27,26 @@ export default function SimilarItems({ currentItem }: SimilarItemsProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadSimilarItems = useCallback(async () => {
-    if (!currentItem) {
+    if (!currentItem?.id || !currentItem?.category) {
       setSimilarItems([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      // Mock data for similar items - replace with actual API call
-      const mockItems: Item[] = [
-        {
-          id: "1",
-          title: "Pressure washer",
-          category: currentItem.category,
-          location: "Pozuelo",
-          daily_rate: 10,
-          availability: true,
-          instant_booking: true,
-          images: ["https://images.unsplash.com/photo-1628177142898-93e36b4afd25?w=400&h=300&fit=crop"],
-        },
-        {
-          id: "2",
-          title: "Drone",
-          category: currentItem.category,
-          location: "Paris",
-          daily_rate: 25,
-          availability: true,
-          instant_booking: true,
-          images: ["https://images.unsplash.com/photo-1473968512647-3e447244af8f?w=400&h=300&fit=crop"],
-        },
-        {
-          id: "3",
-          title: "Skis",
-          category: currentItem.category,
-          location: "Madrid",
-          daily_rate: 15,
-          availability: true,
-          instant_booking: true,
-          images: ["https://images.unsplash.com/photo-1551524164-6cf77f5e7f8b?w=400&h=300&fit=crop"],
-        },
-      ];
-      
-      const filtered = mockItems
-        .filter((item: Item) => item.id !== currentItem.id)
-        .slice(0, 4);
-      
+      const response = await api.getItems({
+        category: currentItem.category,
+        limit: 20,
+        offset: 0,
+        sort_by: 'newest',
+        exclude_id: currentItem.id,
+      });
+
+      const items = (response as any)?.data || [];
+      const filtered = (Array.isArray(items) ? items : [])
+        .filter((item: Item) => item?.id && item.id !== currentItem.id)
+        .slice(0, 20);
+
       setSimilarItems(filtered);
     } catch (error) {
       console.error("Error loading similar items:", error);
@@ -91,7 +67,7 @@ export default function SimilarItems({ currentItem }: SimilarItemsProps) {
         <CardTitle>Similar Items You Might Like</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
           {similarItems.map((item) => (
             <ItemCard key={item.id} item={item} />
           ))}

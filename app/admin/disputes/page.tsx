@@ -130,10 +130,6 @@ export default function AdminDisputesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isDraftingResponse, setIsDraftingResponse] = useState(false);
-  const [aiSuggestion, setAiSuggestion] = useState<any>(null);
-  const [draftedResponses, setDraftedResponses] = useState<any>(null);
   const [resolutionData, setResolutionData] = useState<{
     status: string;
     decision: string;
@@ -151,11 +147,11 @@ export default function AdminDisputesPage() {
   });
 
   // State for user reporting
-  const [isReportingUser, setIsReportingUser] = useState(false);
-  const [userToReport, setUserToReport] = useState<(User & { dispute_id?: string }) | null>(null);
-  const [reportReason, setReportReason] = useState("");
-  const [reportNotes, setReportNotes] = useState("");
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  // const [isReportingUser, setIsReportingUser] = useState(false);
+  // const [userToReport, setUserToReport] = useState<(User & { dispute_id?: string }) | null>(null);
+  // const [reportReason, setReportReason] = useState("");
+  // const [reportNotes, setReportNotes] = useState("");
+  // const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -182,37 +178,65 @@ export default function AdminDisputesPage() {
       const allDisputes = disputesResponse.success && disputesResponse.data ? disputesResponse.data : [];
       setDisputes(allDisputes);
 
-      const requestsResponse = await api.request<RentalRequest[]>('/rental-requests');
-      const allRequests = requestsResponse.success && requestsResponse.data ? requestsResponse.data : [];
-      const requestsMap: Record<string, RentalRequest> = {};
-      allRequests.forEach(req => {
-        requestsMap[req.id] = req;
-      });
-      setRequests(requestsMap);
+      // Only fetch rental requests that are referenced in disputes
+      if (allDisputes.length > 0) {
+        const rentalRequestIds = [...new Set(allDisputes.map(d => d.rental_request_id).filter(Boolean))];
+        const itemIds = new Set<string>();
+        
+        if (rentalRequestIds.length > 0) {
+          // Fetch only the rental requests we need using ids parameter
+          const idsParam = rentalRequestIds.join(',');
+          const requestsResponse = await api.request<RentalRequest[]>(`/rental-requests?ids=${encodeURIComponent(idsParam)}`);
+          const fetchedRequests = requestsResponse.success && requestsResponse.data ? requestsResponse.data : [];
+          const requestsMap: Record<string, RentalRequest> = {};
+          fetchedRequests.forEach(req => {
+            requestsMap[req.id] = req;
+            if (req.item_id) {
+              itemIds.add(req.item_id);
+            }
+          });
+          setRequests(requestsMap);
 
-      const itemsResponse = await api.getItems();
-      const allItems = itemsResponse.success && itemsResponse.data ? (Array.isArray(itemsResponse.data) ? itemsResponse.data : []) : [];
-      const itemsMap: Record<string, Item> = {};
-      allItems.forEach((item: Item) => {
-        itemsMap[item.id] = item;
-      });
-      setItems(itemsMap);
-
-      const reportsResponse = await api.request<any[]>('/condition-reports');
-      const allReports = reportsResponse.success && reportsResponse.data ? reportsResponse.data : [];
-      const reportsMap: Record<string, ConditionReport[]> = {};
-      allReports.forEach(report => {
-        if (!reportsMap[report.rental_request_id]) {
-          reportsMap[report.rental_request_id] = [];
+          // Only fetch items that are referenced in the rental requests from disputes
+          if (itemIds.size > 0) {
+            const itemIdsParam = Array.from(itemIds).join(',');
+            const itemsResponse = await api.request<Item[]>(`/items?ids=${encodeURIComponent(itemIdsParam)}`);
+            const fetchedItems = itemsResponse.success && itemsResponse.data ? (Array.isArray(itemsResponse.data) ? itemsResponse.data : []) : [];
+            const itemsMap: Record<string, Item> = {};
+            fetchedItems.forEach((item: Item) => {
+              itemsMap[item.id] = item;
+            });
+            setItems(itemsMap);
+          }
         }
-        // Ensure created_date exists, use current date as fallback
-        const reportWithDate: ConditionReport = {
-          ...report,
-          created_date: report.created_date || report.created_at || new Date().toISOString()
-        };
-        reportsMap[report.rental_request_id].push(reportWithDate);
-      });
-      setConditionReports(reportsMap);
+      }
+
+      // Only fetch condition reports for rental requests that are in disputes
+      if (allDisputes.length > 0) {
+        const rentalRequestIds = [...new Set(allDisputes.map(d => d.rental_request_id).filter(Boolean))];
+        if (rentalRequestIds.length > 0) {
+          const idsParam = rentalRequestIds.join(',');
+          const reportsResponse = await api.request<any[]>(`/condition-reports?rental_request_ids=${encodeURIComponent(idsParam)}`);
+          const fetchedReports = reportsResponse.success && reportsResponse.data ? reportsResponse.data : [];
+          const reportsMap: Record<string, ConditionReport[]> = {};
+          fetchedReports.forEach(report => {
+            if (!reportsMap[report.rental_request_id]) {
+              reportsMap[report.rental_request_id] = [];
+            }
+            // Ensure created_date exists, use current date as fallback
+            const reportWithDate: ConditionReport = {
+              ...report,
+              created_date: report.created_date || report.created_at || new Date().toISOString()
+            };
+            reportsMap[report.rental_request_id].push(reportWithDate);
+          });
+          setConditionReports(reportsMap);
+        } else {
+          setConditionReports({});
+        }
+      } else {
+        setConditionReports({});
+      }
 
       const involvedEmails = new Set<string>();
       allDisputes.forEach(dispute => {
@@ -241,8 +265,6 @@ export default function AdminDisputesPage() {
 
   const handleOpenDispute = (dispute: Dispute) => {
     setSelectedDispute(dispute);
-    setAiSuggestion(null);
-    setDraftedResponses(null);
     setResolutionData({
       status: dispute.status,
       decision: '',
@@ -278,7 +300,7 @@ export default function AdminDisputesPage() {
           title: statusMessage,
           message: `The dispute regarding "${item?.title || 'your rental'}" status has been updated to: ${newStatus.replace('_', ' ')}.`,
           related_id: dispute.id,
-          link: '/Disputes'
+          link: '/disputes'
         });
 
         await sendNotification({
@@ -287,7 +309,7 @@ export default function AdminDisputesPage() {
           title: statusMessage,
           message: `The dispute regarding "${item?.title || 'your rental'}" status has been updated to: ${newStatus.replace('_', ' ')}.`,
           related_id: dispute.id,
-          link: '/Disputes'
+          link: '/disputes'
         });
       }
 
@@ -298,263 +320,20 @@ export default function AdminDisputesPage() {
     }
   };
 
-  const handleGetAISuggestion = async () => {
-    if (!selectedDispute) return;
-    
-    setIsAnalyzing(true);
-    try {
-      const request = requests[selectedDispute.rental_request_id];
-      const item = request ? items[request.item_id] : null;
-      const reports = conditionReports[selectedDispute.rental_request_id] || [];
-      
-      // Get historical data for learning
-      const resolvedDisputes = disputes.filter(d => 
-        d.status === 'resolved' && 
-        d.decision && 
-        d.id !== selectedDispute.id
-      );
-
-      const historicalContext = resolvedDisputes.slice(-10).map(d => ({
-        reason: d.reason,
-        decision: d.decision,
-        refund_to_renter: d.refund_to_renter,
-        charge_to_owner: d.charge_to_owner,
-        description: d.description ? d.description.substring(0, 200) : '' // Truncate for brevity, handle null/undefined
-      }));
-
-      const allImageUrls = [];
-      
-      if (selectedDispute.evidence_urls && selectedDispute.evidence_urls.length > 0) {
-        allImageUrls.push(...selectedDispute.evidence_urls);
-      }
-      
-      reports.forEach(report => {
-        if (report.condition_photos && report.condition_photos.length > 0) {
-          allImageUrls.push(...report.condition_photos);
-        }
-      });
-      
-      const context = `
-        COMPREHENSIVE DISPUTE CASE ANALYSIS
-        You are an experienced dispute resolution specialist reviewing a rental platform case.
-        
-        ==== CURRENT DISPUTE ====
-        Dispute Information:
-        - Reason: ${selectedDispute.reason.replace('_', ' ')}
-        - Filed By: ${selectedDispute.filed_by_email}
-        - Against: ${selectedDispute.against_email}
-        - Description: ${selectedDispute.description}
-        
-        Rental Details:
-        - Item: ${item?.title || 'Unknown'}
-        - Item Category: ${item?.category || 'Unknown'}
-        - Item Listed Condition: ${item?.condition || 'Unknown'}
-        - Rental Amount: $${request?.total_amount || 0}
-        - Security Deposit: $${item?.deposit || 0}
-        - Rental Period: ${request?.start_date} to ${request?.end_date}
-        
-        Evidence Submitted:
-        - Dispute Evidence Photos: ${selectedDispute.evidence_urls?.length || 0} attached
-        - Condition Reports: ${reports.length} total
-        
-        Condition Reports Details:
-        ${reports.map(r => `
-        ${r.report_type.toUpperCase()} INSPECTION (by ${r.reported_by_email}):
-        - Photos: ${r.condition_photos?.length || 0} attached
-        - Notes: ${r.notes || 'None provided'}
-        - Damages Reported: ${r.damages_reported?.length || 0}
-        ${r.damages_reported?.map(d => `  * ${d.severity}: ${d.description}`).join('\n') || ''}
-        `).join('\n')}
-        
-        ==== HISTORICAL PATTERNS (Last 10 Similar Cases) ====
-        ${historicalContext.length > 0 ? historicalContext.map((h, i) => `
-        Case ${i + 1}:
-        - Reason: ${h.reason}
-        - Decision: ${h.decision}
-        - Refund to Renter: $${h.refund_to_renter || 0}
-        - Charge to Owner: $${h.charge_to_owner || 0}
-        - Context: ${h.description}
-        `).join('\n') : 'No historical data available'}
-        
-        ==== YOUR TASK ====
-        1. CAREFULLY EXAMINE all attached photos (both dispute evidence and condition reports)
-        2. Compare pickup photos vs return photos to identify changes
-        3. Look for visible damage, wear, or discrepancies
-        4. Consider historical patterns from similar cases
-        5. Evaluate credibility of both parties' claims
-        6. Assess if damages match the severity claimed
-        
-        Provide:
-        1. A comprehensive case summary highlighting key findings
-        2. Fair decision recommendation (favor_renter, favor_owner, or split)
-        3. Recommended financial resolution
-        4. Clear resolution message for both parties
-        5. Detailed reasoning based on evidence AND historical patterns
-        6. Risk assessment if we make wrong decision
-      `;
-
-      const response = await InvokeLLM({
-        prompt: context,
-        file_urls: allImageUrls,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            case_summary: { 
-              type: "string",
-              description: "Comprehensive summary of the case highlighting key evidence"
-            },
-            decision: { 
-              type: "string",
-              enum: ["favor_renter", "favor_owner", "split"]
-            },
-            confidence_level: {
-              type: "string",
-              enum: ["high", "medium", "low"],
-              description: "How confident you are in this decision"
-            },
-            refund_to_renter: { type: "number" },
-            charge_to_owner: { type: "number" },
-            resolution_message: { 
-              type: "string",
-              description: "Clear, professional message explaining the decision to both parties"
-            },
-            reasoning: { 
-              type: "string",
-              description: "Detailed reasoning including evidence analysis and historical context"
-            },
-            visual_observations: { 
-              type: "string",
-              description: "Specific observations from the photos"
-            },
-            risk_assessment: {
-              type: "string",
-              description: "What could go wrong if we make this decision"
-            },
-            historical_alignment: {
-              type: "string",
-              description: "How this decision aligns with past similar cases"
-            }
-          }
-        }
-      });
-
-      setAiSuggestion(response);
-      
-      setResolutionData(prev => ({
-        ...prev,
-        decision: response.decision,
-        refund_to_renter: response.refund_to_renter || 0,
-        charge_to_owner: response.charge_to_owner || 0,
-        resolution: response.resolution_message
-      }));
-
-    } catch (error) {
-      console.error("Error getting AI suggestion:", error);
-      alert("Failed to get AI analysis. Please try again.");
-    }
-    setIsAnalyzing(false);
-  };
-
-  const handleDraftResponses = async () => {
-    if (!selectedDispute || !aiSuggestion) {
-      alert("Please run AI analysis first to draft responses");
-      return;
-    }
-
-    setIsDraftingResponse(true);
-    try {
-      const request = requests[selectedDispute.rental_request_id];
-      const item = request ? items[request.item_id] : null;
-      const filedByUser = usersMap[selectedDispute.filed_by_email];
-      const againstUser = usersMap[selectedDispute.against_email];
-
-      const draftPrompt = `
-        You are drafting professional, empathetic responses for a rental platform dispute.
-        
-        Context:
-        - Decision: ${aiSuggestion.decision}
-        - Case Summary: ${aiSuggestion.case_summary}
-        - Resolution: ${aiSuggestion.resolution_message}
-        - Refund to Renter: $${aiSuggestion.refund_to_renter?.toFixed(2) || 0}
-        - Charge to Owner: $${aiSuggestion.charge_to_owner?.toFixed(2) || 0}
-        
-        Item: ${item?.title || 'the rental item'}
-        Filed By: ${filedByUser?.full_name || selectedDispute.filed_by_email}
-        Against: ${againstUser?.full_name || selectedDispute.against_email}
-        
-        Draft THREE professional email responses:
-        1. To the person who filed the dispute (${selectedDispute.filed_by_email})
-        2. To the person the dispute was filed against (${selectedDispute.against_email})
-        3. A neutral public resolution message for both parties
-        
-        Each response should:
-        - Be professional and empathetic
-        - Explain the decision clearly
-        - Reference specific evidence
-        - Outline next steps
-        - Maintain platform neutrality
-        - Be personalized to the recipient
-        - Include monetary amounts where relevant
-        - Be between 150-300 words
-      `;
-
-      const draftResponse = await InvokeLLM({
-        prompt: draftPrompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            to_filer: {
-              type: "object",
-              properties: {
-                subject: { type: "string" },
-                body: { type: "string" }
-              }
-            },
-            to_respondent: {
-              type: "object",
-              properties: {
-                subject: { type: "string" },
-                body: { type: "string" }
-              }
-            },
-            public_resolution: {
-              type: "string",
-              description: "Neutral message visible to both parties"
-            }
-          }
-        }
-      });
-
-      setDraftedResponses(draftResponse);
-
-    } catch (error) {
-      console.error("Error drafting responses:", error);
-      alert("Failed to draft responses. Please try again.");
-    }
-    setIsDraftingResponse(false);
-  };
-
   const handleQuickDecision = (decision: string) => {
     if (!selectedDispute) return;
-    const request = requests[selectedDispute.rental_request_id];
     
     let resolution = '';
-    let refund = 0;
-    let charge = 0;
 
     switch (decision) {
       case 'favor_renter':
-        refund = request?.total_amount || 0;
-        resolution = `After reviewing the evidence, we've decided in favor of the renter. The full rental amount of $${refund.toFixed(2)} will be refunded to the renter.`;
+        resolution = `After reviewing the evidence, we've decided in favor of the renter. The full amount paid (rental cost + platform fee + security deposit) will be refunded to the renter.`;
         break;
       case 'favor_owner':
-        charge = request?.total_amount || 0;
-        resolution = `After reviewing the evidence, we've decided in favor of the owner. The full rental amount of $${charge.toFixed(2)} will be released to the owner.`;
+        resolution = `After reviewing the evidence, we've decided in favor of the owner. The full rental amount will be released to the owner.`;
         break;
       case 'split':
-        refund = (request?.total_amount || 0) / 2;
-        charge = (request?.total_amount || 0) / 2;
-        resolution = `After reviewing the evidence, we've decided on a split resolution. $${refund.toFixed(2)} will be refunded to the renter, and $${charge.toFixed(2)} will be released to the owner.`;
+        resolution = `After reviewing the evidence, we've decided on a split resolution. A portion will be refunded to the renter, and a portion will be released to the owner.`;
         break;
       default:
         break;
@@ -563,8 +342,9 @@ export default function AdminDisputesPage() {
     setResolutionData(prev => ({
       ...prev,
       decision,
-      refund_to_renter: refund,
-      charge_to_owner: charge,
+      // Don't set refund/charge amounts - backend will calculate
+      refund_to_renter: 0,
+      charge_to_owner: 0,
       resolution
     }));
   };
@@ -584,13 +364,13 @@ export default function AdminDisputesPage() {
     
     setIsUpdating(true);
     try {
-      await api.request(`/disputes/${selectedDispute.id}`, {
+      // Send only decision and resolution message - backend will calculate refund amounts
+      const response = await api.request(`/disputes/${selectedDispute.id}`, {
         method: 'PUT',
         body: JSON.stringify({
           status: 'resolved',
           decision: resolutionData.decision,
-          refund_to_renter: resolutionData.refund_to_renter,
-          charge_to_owner: resolutionData.charge_to_owner,
+          // Don't send refund_to_renter or charge_to_owner - backend calculates these
           resolution: resolutionData.resolution,
           admin_notes: resolutionData.admin_notes,
           resolved_date: new Date().toISOString()
@@ -600,23 +380,26 @@ export default function AdminDisputesPage() {
       const request = requests[selectedDispute.rental_request_id];
       const item = request ? items[request.item_id] : null;
 
+      // Get the resolved dispute data from the response to show actual refund/charge amounts
+      const resolvedDispute = response.data as Dispute;
+
       // Enhanced notifications with detailed resolution info
       await sendNotification({
         user_email: selectedDispute.filed_by_email,
         type: 'dispute',
         title: '✅ Your Dispute Has Been Resolved',
-        message: `The dispute regarding "${item?.title || 'your rental'}" has been resolved. Decision: ${resolutionData.decision.replace('_', ' ').toUpperCase()}. ${resolutionData.refund_to_renter > 0 ? `Refund: $${resolutionData.refund_to_renter.toFixed(2)}. ` : ''}Resolution: ${resolutionData.resolution}`,
+        message: `The dispute regarding "${item?.title || 'your rental'}" has been resolved. Decision: ${resolutionData.decision.replace('_', ' ').toUpperCase()}. ${resolvedDispute.refund_to_renter && resolvedDispute.refund_to_renter > 0 ? `Refund: $${resolvedDispute.refund_to_renter.toFixed(2)}. ` : ''}Resolution: ${resolutionData.resolution}`,
         related_id: selectedDispute.id,
-        link: `/Disputes`
+        link: `/disputes`
       });
 
       await sendNotification({
         user_email: selectedDispute.against_email,
         type: 'dispute',
         title: '⚖️ A Dispute Has Been Resolved',
-        message: `The dispute regarding "${item?.title || 'your rental'}" has been resolved. Decision: ${resolutionData.decision.replace('_', ' ').toUpperCase()}. ${resolutionData.charge_to_owner > 0 ? `Payment released: $${resolutionData.charge_to_owner.toFixed(2)}. ` : ''}Resolution: ${resolutionData.resolution}`,
+        message: `The dispute regarding "${item?.title || 'your rental'}" has been resolved. Decision: ${resolutionData.decision.replace('_', ' ').toUpperCase()}. ${resolvedDispute.charge_to_owner && resolvedDispute.charge_to_owner > 0 ? `Payment released: $${resolvedDispute.charge_to_owner.toFixed(2)}. ` : ''}Resolution: ${resolutionData.resolution}`,
         related_id: selectedDispute.id,
-        link: `/Disputes`
+        link: `/disputes`
       });
 
       await loadData();
@@ -629,36 +412,36 @@ export default function AdminDisputesPage() {
     setIsUpdating(false);
   };
 
-  const handleReportUser = (user: User, disputeId: string) => {
-    setUserToReport({ ...user, dispute_id: disputeId } as User & { dispute_id: string });
-    setReportReason("");
-    setReportNotes("");
-    setIsReportingUser(true);
-  };
+  // const handleReportUser = (user: User, disputeId: string) => {
+  //   setUserToReport({ ...user, dispute_id: disputeId } as User & { dispute_id: string });
+  //   setReportReason("");
+  //   setReportNotes("");
+  //   setIsReportingUser(true);
+  // };
 
-  const handleSubmitReport = async () => {
-    if (!userToReport || !reportReason) {
-      alert("Please select a reason for reporting the user.");
-      return;
-    }
+  // const handleSubmitReport = async () => {
+  //   if (!userToReport || !reportReason) {
+  //     alert("Please select a reason for reporting the user.");
+  //     return;
+  //   }
 
-    setIsSubmittingReport(true);
-    try {
-      console.log("Reporting user:", userToReport.email);
-      console.log("Reason:", reportReason);
-      console.log("Notes:", reportNotes);
-      console.log("Dispute ID context:", userToReport.dispute_id);
+    // setIsSubmittingReport(true);
+    // try {
+    //   console.log("Reporting user:", userToReport.email);
+    //   console.log("Reason:", reportReason);
+    //   console.log("Notes:", reportNotes);
+    //   console.log("Dispute ID context:", userToReport.dispute_id);
       
-      alert(`User ${userToReport.full_name || userToReport.email} reported successfully.`);
-      setIsReportingUser(false);
-      setUserToReport(null);
-    } catch (error) {
-      console.error("Error reporting user:", error);
-      alert("Failed to report user. Please try again.");
-    } finally {
-      setIsSubmittingReport(false);
-    }
-  };
+    //   alert(`User ${userToReport.full_name || userToReport.email} reported successfully.`);
+    //   setIsReportingUser(false);
+    //   setUserToReport(null);
+    // } catch (error) {
+    //   console.error("Error reporting user:", error);
+    //   alert("Failed to report user. Please try again.");
+    // } finally {
+    //   setIsSubmittingReport(false);
+    // }
+  // };
 
   const DisputeCard = ({ dispute }: { dispute: Dispute }) => {
     const request = requests[dispute.rental_request_id];
@@ -736,13 +519,13 @@ export default function AdminDisputesPage() {
                     <div>
                       <p className="font-medium text-sm">{filedByUser?.full_name || "User"}</p>
                       {filedByUser?.username && (
-                        <Link href={`/PublicProfile?username=${filedByUser.username}`} className="text-xs text-slate-600 hover:underline">
+                        <Link href={`/public-profile?username=${filedByUser.username}`} className="text-xs text-slate-600 hover:underline">
                           @{filedByUser.username}
                         </Link>
                       )}
                     </div>
                   </div>
-                  {filedByUser && (
+                  {/* {filedByUser && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -752,7 +535,7 @@ export default function AdminDisputesPage() {
                     >
                       <Flag className="w-4 h-4" />
                     </Button>
-                  )}
+                  )} */}
                 </div>
               </div>
               <div>
@@ -769,13 +552,13 @@ export default function AdminDisputesPage() {
                     <div>
                       <p className="font-medium text-sm">{againstUser?.full_name || "User"}</p>
                       {againstUser?.username && (
-                        <Link href={`/PublicProfile?username=${againstUser.username}`} className="text-xs text-slate-600 hover:underline">
+                        <Link href={`/public-profile?username=${againstUser.username}`} className="text-xs text-slate-600 hover:underline">
                           @{againstUser.username}
                         </Link>
                       )}
                     </div>
                   </div>
-                  {againstUser && (
+                  {/* {againstUser && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -785,7 +568,7 @@ export default function AdminDisputesPage() {
                     >
                       <Flag className="w-4 h-4" />
                     </Button>
-                  )}
+                  )} */}
                 </div>
               </div>
             </div>
@@ -797,17 +580,17 @@ export default function AdminDisputesPage() {
               <p className="text-sm text-red-800">{dispute.description}</p>
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-slate-600">
+            <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
+              {reports.length > 0 && (
+                <div className="flex items-center gap-1 text-purple-600">
+                  <Camera className="w-4 h-4" />
+                  {reports.length} condition report(s)
+                </div>
+              )}
               {dispute.evidence_urls && dispute.evidence_urls.length > 0 && (
                 <div className="flex items-center gap-1">
                   <FileText className="w-4 h-4" />
                   {dispute.evidence_urls.length} evidence file(s)
-                </div>
-              )}
-              {reports.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <Camera className="w-4 h-4" />
-                  {reports.length} condition report(s)
                 </div>
               )}
             </div>
@@ -868,11 +651,6 @@ export default function AdminDisputesPage() {
   const resolvedDisputes = disputes.filter(d => d.status === 'resolved');
   const closedDisputes = disputes.filter(d => d.status === 'closed');
 
-  const totalPhotosForAnalysis = selectedDispute
-    ? (selectedDispute.evidence_urls?.length || 0) + 
-      (conditionReports[selectedDispute.rental_request_id]?.reduce((sum, r) => sum + (r.condition_photos?.length || 0), 0) || 0)
-    : 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
@@ -881,7 +659,7 @@ export default function AdminDisputesPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3 mb-2">
                 <AlertTriangle className="w-8 h-8 text-red-500" />
@@ -889,15 +667,13 @@ export default function AdminDisputesPage() {
               </h1>
               <p className="text-slate-600">Review and resolve user disputes with AI assistance</p>
             </div>
-            <div className="flex flex-col gap-2">
-              <Badge variant="outline" className="text-lg px-4 py-2">
-                {disputes.length} Total Disputes
-              </Badge>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <Badge className="bg-red-100 text-red-800 border-red-200 flex items-center justify-center gap-1">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+              <p className="text-lg font-bold text-slate-900 mb-1">{disputes.length} Total Disputes</p>
+              <div className="flex items-center gap-3 text-sm">
+                <Badge className="bg-red-100 text-red-800 border-red-200 flex items-center gap-1 px-2 py-0.5">
                   <AlertTriangle className="w-3 h-3" /> {openDisputes.length} Open
                 </Badge>
-                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 flex items-center justify-center gap-1">
+                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 flex items-center gap-1 px-2 py-0.5">
                   <Clock className="w-3 h-3" /> {underReviewDisputes.length} Review
                 </Badge>
               </div>
@@ -1027,239 +803,14 @@ export default function AdminDisputesPage() {
         <Dialog open={!!selectedDispute} onOpenChange={(open) => !open && setSelectedDispute(null)}>
           <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Scale className="w-5 h-5 text-slate-700" />
-                AI-Assisted Dispute Resolution
+              <DialogTitle className="flex items-center gap-2 text-2xl">
+                <AlertTriangle className="w-6 h-6 text-red-500" />
+                Admin Dispute Management
               </DialogTitle>
             </DialogHeader>
 
             {selectedDispute && (
               <div className="space-y-6 py-4">
-                {/* Enhanced AI Analysis Section */}
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div className="flex items-start gap-3 flex-1">
-                      <Sparkles className="w-6 h-6 text-purple-600 mt-1" />
-                      <div>
-                        <h3 className="font-semibold text-purple-900 mb-1">AI-Powered Comprehensive Analysis</h3>
-                        <p className="text-sm text-purple-700 mb-2">
-                          AI will analyze photos, reports, evidence, AND historical patterns from past disputes.
-                        </p>
-                        <div className="flex gap-3 text-xs">
-                          <div className="bg-white/60 rounded-lg px-3 py-1.5 text-purple-800">
-                            📸 <strong>{totalPhotosForAnalysis} photo(s)</strong> to analyze
-                          </div>
-                          <div className="bg-white/60 rounded-lg px-3 py-1.5 text-purple-800">
-                            📊 <strong>{resolvedDisputes.length} past cases</strong> for learning
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        onClick={handleGetAISuggestion}
-                        disabled={isAnalyzing}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        {isAnalyzing ? (
-                          <>
-                            <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4 mr-2" />
-                            Analyze Case
-                          </>
-                        )}
-                      </Button>
-                      
-                      {aiSuggestion && (
-                        <Button
-                          onClick={handleDraftResponses}
-                          disabled={isDraftingResponse}
-                          variant="outline"
-                          className="border-purple-300 text-purple-700 hover:bg-purple-50"
-                        >
-                          {isDraftingResponse ? (
-                            <>
-                              <div className="animate-spin w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full mr-2" />
-                              Drafting...
-                            </>
-                          ) : (
-                            <>
-                              <FileText className="w-4 h-4 mr-2" />
-                              Draft Responses
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* AI Analysis Results */}
-                  {aiSuggestion && (
-                    <div className="space-y-3">
-                      <Alert className="bg-white border-purple-300">
-                        <Sparkles className="w-4 h-4 text-purple-600" />
-                        <AlertTitle className="flex items-center justify-between">
-                          <span>AI Analysis Complete</span>
-                          <Badge className={`${
-                            aiSuggestion.confidence_level === 'high' ? 'bg-green-100 text-green-800' :
-                            aiSuggestion.confidence_level === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-orange-100 text-orange-800'
-                          }`}>
-                            {aiSuggestion.confidence_level} confidence
-                          </Badge>
-                        </AlertTitle>
-                        <AlertDescription className="mt-3 space-y-3">
-                          {/* Case Summary */}
-                          <div className="bg-slate-50 p-3 rounded-lg">
-                            <p className="text-sm font-semibold text-slate-900 mb-2">📋 Case Summary:</p>
-                            <p className="text-sm text-slate-700">{aiSuggestion.case_summary}</p>
-                          </div>
-
-                          {/* Visual Observations */}
-                          {aiSuggestion.visual_observations && (
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                              <p className="text-sm font-semibold text-blue-900 mb-2">🔍 Visual Evidence:</p>
-                              <p className="text-sm text-blue-800">{aiSuggestion.visual_observations}</p>
-                            </div>
-                          )}
-
-                          {/* Decision & Reasoning */}
-                          <div className="bg-purple-50 p-3 rounded-lg">
-                            <p className="text-sm font-semibold text-purple-900 mb-2">
-                              ⚖️ Recommended Decision: <span className="uppercase">{aiSuggestion.decision.replace('_', ' ')}</span>
-                            </p>
-                            <p className="text-sm text-purple-800">{aiSuggestion.reasoning}</p>
-                          </div>
-
-                          {/* Financial Breakdown */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                              <p className="text-xs text-green-700 font-semibold mb-1">Refund to Renter</p>
-                              <p className="text-xl font-bold text-green-900">${aiSuggestion.refund_to_renter?.toFixed(2) || '0.00'}</p>
-                            </div>
-                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                              <p className="text-xs text-blue-700 font-semibold mb-1">Release to Owner</p>
-                              <p className="text-xl font-bold text-blue-900">${aiSuggestion.charge_to_owner?.toFixed(2) || '0.00'}</p>
-                            </div>
-                          </div>
-
-                          {/* Historical Context */}
-                          {aiSuggestion.historical_alignment && (
-                            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
-                              <p className="text-sm font-semibold text-amber-900 mb-2">📊 Historical Context:</p>
-                              <p className="text-sm text-amber-800">{aiSuggestion.historical_alignment}</p>
-                            </div>
-                          )}
-
-                          {/* Risk Assessment */}
-                          {aiSuggestion.risk_assessment && (
-                            <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
-                              <p className="text-sm font-semibold text-orange-900 mb-2">⚠️ Risk Assessment:</p>
-                              <p className="text-sm text-orange-800">{aiSuggestion.risk_assessment}</p>
-                            </div>
-                          )}
-                          
-                          <p className="text-xs text-slate-600 mt-3 italic">
-                            💡 AI analysis is advisory only. Review carefully and use your judgment.
-                          </p>
-                        </AlertDescription>
-                      </Alert>
-
-                      {/* Drafted Responses */}
-                      {draftedResponses && (
-                        <Alert className="bg-green-50 border-green-300">
-                          <FileText className="w-4 h-4 text-green-600" />
-                          <AlertTitle>Drafted Responses Ready</AlertTitle>
-                          <AlertDescription className="mt-3 space-y-4">
-                            {/* To Filer */}
-                            <div className="bg-white p-4 rounded-lg border border-green-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-sm font-semibold text-green-900">
-                                  To: {selectedDispute.filed_by_email} (Dispute Filer)
-                                </p>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(draftedResponses.to_filer.body);
-                                    alert('Copied to clipboard!');
-                                  }}
-                                  className="text-xs"
-                                >
-                                  Copy
-                                </Button>
-                              </div>
-                              <p className="text-xs font-semibold text-slate-700 mb-1">
-                                Subject: {draftedResponses.to_filer.subject}
-                              </p>
-                              <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                                {draftedResponses.to_filer.body}
-                              </p>
-                            </div>
-
-                            {/* To Respondent */}
-                            <div className="bg-white p-4 rounded-lg border border-green-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-sm font-semibold text-green-900">
-                                  To: {selectedDispute.against_email} (Respondent)
-                                </p>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(draftedResponses.to_respondent.body);
-                                    alert('Copied to clipboard!');
-                                  }}
-                                  className="text-xs"
-                                >
-                                  Copy
-                                </Button>
-                              </div>
-                              <p className="text-xs font-semibold text-slate-700 mb-1">
-                                Subject: {draftedResponses.to_respondent.subject}
-                              </p>
-                              <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                                {draftedResponses.to_respondent.body}
-                              </p>
-                            </div>
-
-                            {/* Public Resolution */}
-                            <div className="bg-white p-4 rounded-lg border border-green-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-sm font-semibold text-green-900">
-                                  Public Resolution (Visible to Both)
-                                </p>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setResolutionData(prev => ({ ...prev, resolution: draftedResponses.public_resolution }));
-                                    alert('Applied to resolution field!');
-                                  }}
-                                  className="text-xs"
-                                >
-                                  Use This
-                                </Button>
-                              </div>
-                              <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                                {draftedResponses.public_resolution}
-                              </p>
-                            </div>
-
-                            <p className="text-xs text-slate-600 italic">
-                              ✏️ These are drafts - review and customize before sending
-                            </p>
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 {/* Dispute Info */}
                 <div className="bg-slate-50 rounded-lg p-4">
                   <h3 className="font-semibold mb-2">Dispute Details</h3>
@@ -1288,13 +839,13 @@ export default function AdminDisputesPage() {
                           <div>
                             <p className="font-medium text-sm">{usersMap[selectedDispute.filed_by_email]?.full_name || "User"}</p>
                             {usersMap[selectedDispute.filed_by_email]?.username && (
-                              <Link href={`/PublicProfile?username=${usersMap[selectedDispute.filed_by_email].username}`} className="text-xs text-slate-600 hover:underline">
+                              <Link href={`/public-profile?username=${usersMap[selectedDispute.filed_by_email].username}`} className="text-xs text-slate-600 hover:underline">
                                 @{usersMap[selectedDispute.filed_by_email].username}
                               </Link>
                             )}
                           </div>
                         </div>
-                        {usersMap[selectedDispute.filed_by_email] && (
+                        {/* {usersMap[selectedDispute.filed_by_email] && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1303,7 +854,7 @@ export default function AdminDisputesPage() {
                           >
                             <Flag className="w-4 h-4 mr-1" /> Report
                           </Button>
-                        )}
+                        )} */}
                       </div>
                     </div>
                     <div>
@@ -1320,13 +871,13 @@ export default function AdminDisputesPage() {
                           <div>
                             <p className="font-medium text-sm">{usersMap[selectedDispute.against_email]?.full_name || "User"}</p>
                             {usersMap[selectedDispute.against_email]?.username && (
-                              <Link href={`/PublicProfile?username=${usersMap[selectedDispute.against_email].username}`} className="text-xs text-slate-600 hover:underline">
+                              <Link href={`/public-profile?username=${usersMap[selectedDispute.against_email].username}`} className="text-xs text-slate-600 hover:underline">
                                 @{usersMap[selectedDispute.against_email].username}
                               </Link>
                             )}
                           </div>
                         </div>
-                        {usersMap[selectedDispute.against_email] && (
+                        {/* {usersMap[selectedDispute.against_email] && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1335,7 +886,7 @@ export default function AdminDisputesPage() {
                           >
                             <Flag className="w-4 h-4 mr-1" /> Report
                           </Button>
-                        )}
+                        )} */}
                       </div>
                     </div>
                   </div>
@@ -1384,30 +935,36 @@ export default function AdminDisputesPage() {
                     <div className="grid grid-cols-3 gap-3">
                       <Button
                         type="button"
-                        variant={resolutionData.decision === 'favor_renter' ? 'default' : 'outline'}
+                        variant="outline"
                         onClick={() => handleQuickDecision('favor_renter')}
-                        className={resolutionData.decision === 'favor_renter' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                        className={resolutionData.decision === 'favor_renter' 
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' 
+                          : 'bg-white hover:bg-slate-50 border-slate-300'}
                       >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Favor Renter
+                        <CheckCircle className={`w-4 h-4 mr-2 ${resolutionData.decision === 'favor_renter' ? 'text-white' : 'text-slate-600'}`} />
+                        <span className={resolutionData.decision === 'favor_renter' ? 'font-semibold' : ''}>Favor Renter</span>
                       </Button>
                       <Button
                         type="button"
-                        variant={resolutionData.decision === 'favor_owner' ? 'default' : 'outline'}
+                        variant="outline"
                         onClick={() => handleQuickDecision('favor_owner')}
-                        className={resolutionData.decision === 'favor_owner' ? 'bg-green-600 hover:bg-green-700' : ''}
+                        className={resolutionData.decision === 'favor_owner' 
+                          ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' 
+                          : 'bg-white hover:bg-slate-50 border-slate-300'}
                       >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Favor Owner
+                        <CheckCircle className={`w-4 h-4 mr-2 ${resolutionData.decision === 'favor_owner' ? 'text-white' : 'text-slate-600'}`} />
+                        <span className={resolutionData.decision === 'favor_owner' ? 'font-semibold' : ''}>Favor Owner</span>
                       </Button>
                       <Button
                         type="button"
-                        variant={resolutionData.decision === 'split' ? 'default' : 'outline'}
+                        variant="outline"
                         onClick={() => handleQuickDecision('split')}
-                        className={resolutionData.decision === 'split' ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                        className={resolutionData.decision === 'split' 
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600' 
+                          : 'bg-white hover:bg-slate-50 border-slate-300'}
                       >
-                        <Scale className="w-4 h-4 mr-2" />
-                        Split Decision
+                        <Scale className={`w-4 h-4 mr-2 ${resolutionData.decision === 'split' ? 'text-white' : 'text-slate-600'}`} />
+                        <span className={resolutionData.decision === 'split' ? 'font-semibold' : ''}>Split Decision</span>
                       </Button>
                     </div>
                   </div>
@@ -1474,24 +1031,42 @@ export default function AdminDisputesPage() {
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => setSelectedDispute(null)}
+                onClick={() => {
+                  setSelectedDispute(null);
+                  setResolutionData({
+                    status: '',
+                    decision: '',
+                    refund_to_renter: 0,
+                    charge_to_owner: 0,
+                    resolution: '',
+                    admin_notes: ''
+                  });
+                }}
                 disabled={isUpdating}
+                className="bg-white hover:bg-slate-50"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleUpdateDispute}
-                disabled={isUpdating || !resolutionData.decision}
-                className="bg-slate-900 hover:bg-slate-800"
+                disabled={isUpdating || !resolutionData.decision || !resolutionData.resolution}
+                className="bg-slate-900 hover:bg-slate-800 text-white"
               >
-                {isUpdating ? 'Saving...' : 'Finalize Resolution'}
+                {isUpdating ? (
+                  <>
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                    Updating...
+                  </>
+                ) : (
+                  'Finalize Resolution'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* User Reporting Dialog */}
-        <Dialog open={isReportingUser} onOpenChange={setIsReportingUser}>
+        {/* <Dialog open={isReportingUser} onOpenChange={setIsReportingUser}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -1560,7 +1135,7 @@ export default function AdminDisputesPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+        </Dialog> */}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react';
-import { api, sendEmail } from '@/lib/api-client';
+import { api } from '@/lib/api-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,9 @@ interface Extension {
   status: 'pending' | 'approved' | 'declined';
   payment_intent_id?: string;
 }
+
+// Display status type (includes 'paid' which is derived from payment_intent_id)
+type DisplayStatus = 'pending' | 'approved' | 'declined' | 'paid';
 
 interface RentalRequest {
   id: string;
@@ -79,32 +82,7 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
         console.error('Failed to create system message:', messageError);
       }
 
-      // Send email to renter
-      try {
-        await sendEmail({
-          to: rentalRequest.renter_email,
-          subject: `Extension Approved for ${item?.title || 'Your Rental'}`,
-          body: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #10b981;">✅ Extension Approved!</h2>
-              <p>Good news! Your extension request has been approved.</p>
-              
-              <div style="background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
-                <p><strong>Item:</strong> ${item?.title || 'Your Rental'}</p>
-                <p><strong>New End Date:</strong> ${format(parseISO(extension.new_end_date), 'PPP')}</p>
-                <p><strong>Extra Days:</strong> ${extraDays} days</p>
-                <p><strong>Additional Cost:</strong> $${extension.additional_cost.toFixed(2)}</p>
-              </div>
-              
-              <p>Please complete the payment to confirm the extension.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">Pay Now</a></p>
-            </div>
-          `,
-          from_name: "Rentable"
-        });
-      } catch (emailError) {
-        console.error('Failed to send approval email:', emailError);
-      }
+      // Email notifications removed - using in-app notifications and chat instead
 
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -143,30 +121,7 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
         console.error('Failed to create system message:', messageError);
       }
 
-      // Send email to renter
-      try {
-        await sendEmail({
-          to: rentalRequest.renter_email,
-          subject: `Extension Request Declined for ${item?.title || 'Your Rental'}`,
-          body: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #ef4444;">Extension Request Declined</h2>
-              <p>Unfortunately, your extension request has been declined by the owner.</p>
-              
-              <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
-                <p><strong>Item:</strong> ${item?.title || 'Your Rental'}</p>
-                <p><strong>Original End Date:</strong> ${format(parseISO(rentalRequest.end_date), 'PPP')}</p>
-              </div>
-              
-              <p>Please ensure you return the item by the original end date to avoid late fees.</p>
-              <p><a href="${typeof window !== 'undefined' ? window.location.origin + '/request' : ''}" style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 10px;">View Rental</a></p>
-            </div>
-          `,
-          from_name: "Rentable"
-        });
-      } catch (emailError) {
-        console.error('Failed to send decline email:', emailError);
-      }
+      // Email notifications removed - using in-app notifications and chat instead
 
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -204,11 +159,15 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
     }
   };
 
-  const statusColors = {
+  const statusColors: Record<DisplayStatus, string> = {
     pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     approved: 'bg-green-100 text-green-800 border-green-200',
-    declined: 'bg-red-100 text-red-800 border-red-200'
+    declined: 'bg-red-100 text-red-800 border-red-200',
+    paid: 'bg-blue-100 text-blue-800 border-blue-200'
   };
+
+  // Determine display status: if paid, show "paid", otherwise show the extension status
+  const displayStatus: DisplayStatus = extension.payment_intent_id ? 'paid' : extension.status;
 
   return (
     <Card className="border-2 border-blue-200 bg-blue-50/50">
@@ -221,8 +180,8 @@ export default function ExtensionRequestDisplay({ extension, rentalRequest, item
           <div className="flex-1">
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold text-blue-900">Extension Request</h4>
-              <Badge className={statusColors[extension.status]}>
-                {extension.status}
+              <Badge className={statusColors[displayStatus]}>
+                {displayStatus}
               </Badge>
             </div>
 

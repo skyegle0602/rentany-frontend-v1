@@ -119,23 +119,38 @@ export default function DisputesPage() {
 
       await delay(100);
 
-      const requestsResponse = await api.request<RentalRequest[]>('/rental-requests');
-      const allRequests = requestsResponse.success && requestsResponse.data ? requestsResponse.data : [];
+      // Only load rental requests for the current user (query separately as backend uses AND logic)
+      const [renterReqsResponse, ownerReqsResponse] = await Promise.all([
+        api.request<RentalRequest[]>(`/rental-requests?renter_email=${encodeURIComponent(currentUser.email)}`),
+        api.request<RentalRequest[]>(`/rental-requests?owner_email=${encodeURIComponent(currentUser.email)}`)
+      ]);
+      const renterReqs = renterReqsResponse.success && renterReqsResponse.data ? renterReqsResponse.data : [];
+      const ownerReqs = ownerReqsResponse.success && ownerReqsResponse.data ? ownerReqsResponse.data : [];
+      // Merge and deduplicate
+      const allUserRequests = [...renterReqs, ...ownerReqs];
+      const uniqueRequests = Array.from(new Map(allUserRequests.map(req => [req.id, req])).values());
       const requestsMap: Record<string, RentalRequest> = {};
-      allRequests.forEach(req => {
+      uniqueRequests.forEach(req => {
         requestsMap[req.id] = req;
       });
       setRequests(requestsMap);
 
       await delay(100);
 
-      const itemsResponse = await api.getItems();
-      const allItems = itemsResponse.success && itemsResponse.data ? (Array.isArray(itemsResponse.data) ? itemsResponse.data : []) : [];
-      const itemsMap: Record<string, Item> = {};
-      allItems.forEach((item: Item) => {
-        itemsMap[item.id] = item;
-      });
-      setItems(itemsMap);
+      // Only fetch items that are referenced in user's rental requests
+      if (uniqueRequests.length > 0) {
+        const itemIds = [...new Set(uniqueRequests.map(r => r.item_id).filter(Boolean))];
+        if (itemIds.length > 0) {
+          const idsParam = itemIds.join(',');
+          const itemsResponse = await api.request<Item[]>(`/items?ids=${encodeURIComponent(idsParam)}`);
+          const fetchedItems = itemsResponse.success && itemsResponse.data ? (Array.isArray(itemsResponse.data) ? itemsResponse.data : []) : [];
+          const itemsMap: Record<string, Item> = {};
+          fetchedItems.forEach((item: Item) => {
+            itemsMap[item.id] = item;
+          });
+          setItems(itemsMap);
+        }
+      }
 
       await delay(100);
 
@@ -146,7 +161,7 @@ export default function DisputesPage() {
         involvedEmails.add(dispute.against_email);
       });
       // Also add users from rental requests to ensure all relevant users are loaded
-      allRequests.forEach(req => {
+      uniqueRequests.forEach((req: RentalRequest) => {
         involvedEmails.add(req.renter_email);
         involvedEmails.add(req.owner_email);
       });

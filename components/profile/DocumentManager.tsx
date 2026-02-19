@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileText, Upload, AlertCircle, Trash2, Eye, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { uploadFile, api, type UserData } from '@/lib/api-client';
+import { api, type UserData } from '@/lib/api-client';
 
 interface Document {
   id: string;
@@ -48,7 +48,7 @@ export default function DocumentManager({ user, onUpdate }: DocumentManagerProps
     setUploadError(null);
 
     try {
-      const response = await uploadFile(file);
+      const response = await api.uploadFile(file);
       
       const newDocument: Document = {
         id: Date.now().toString(),

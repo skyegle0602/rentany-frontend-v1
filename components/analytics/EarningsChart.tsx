@@ -49,7 +49,7 @@ export default function EarningsChart({ data, type = 'line' }: EarningsChartProp
                   const numValue = typeof value === 'number' ? value : 0;
                   return `$${numValue.toFixed(2)}`;
                 }}
-                labelFormatter={(label: string) => `Date: ${label}`}
+                labelFormatter={(label) => `Date: ${label}`}
               />
               <Line type="monotone" dataKey="earnings" stroke="#3b82f6" strokeWidth={2} />
             </LineChart>
@@ -60,7 +60,7 @@ export default function EarningsChart({ data, type = 'line' }: EarningsChartProp
               <YAxis />
               <Tooltip 
                 formatter={(value: number | undefined) => value !== undefined ? `$${value.toFixed(2)}` : '$0.00'}
-                labelFormatter={(label: string) => `Date: ${label}`}
+                labelFormatter={(label) => `Date: ${label}`}
               />
               <Bar dataKey="earnings" fill="#3b82f6" />
             </BarChart>
