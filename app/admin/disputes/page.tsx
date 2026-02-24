@@ -652,24 +652,28 @@ export default function AdminDisputesPage() {
   const closedDisputes = disputes.filter(d => d.status === 'closed');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3 mb-2">
-                <AlertTriangle className="w-8 h-8 text-red-500" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-2">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3 mb-2">
+                <AlertTriangle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" />
                 Admin Dispute Management
               </h1>
-              <p className="text-slate-600">Review and resolve user disputes with AI assistance</p>
+              <p className="text-slate-600 text-sm sm:text-base">
+                Review and resolve user disputes with AI assistance
+              </p>
             </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
-              <p className="text-lg font-bold text-slate-900 mb-1">{disputes.length} Total Disputes</p>
-              <div className="flex items-center gap-3 text-sm">
+            <div className="w-fit bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
+              <p className="text-sm sm:text-lg font-bold text-slate-900 mb-1">
+                {disputes.length} Total Disputes
+              </p>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                 <Badge className="bg-red-100 text-red-800 border-red-200 flex items-center gap-1 px-2 py-0.5">
                   <AlertTriangle className="w-3 h-3" /> {openDisputes.length} Open
                 </Badge>
@@ -681,28 +685,28 @@ export default function AdminDisputesPage() {
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4">
             <Card className="border-red-200 bg-red-50">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-red-900">{openDisputes.length}</p>
+              <CardContent className="p-3 sm:p-4 text-center">
+                <p className="text-xl sm:text-2xl font-bold text-red-900">{openDisputes.length}</p>
                 <p className="text-xs text-red-700">Open</p>
               </CardContent>
             </Card>
             <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-yellow-900">{underReviewDisputes.length}</p>
+              <CardContent className="p-3 sm:p-4 text-center">
+                <p className="text-xl sm:text-2xl font-bold text-yellow-900">{underReviewDisputes.length}</p>
                 <p className="text-xs text-yellow-700">Under Review</p>
               </CardContent>
             </Card>
             <Card className="border-green-200 bg-green-50">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-green-900">{resolvedDisputes.length}</p>
+              <CardContent className="p-3 sm:p-4 text-center">
+                <p className="text-xl sm:text-2xl font-bold text-green-900">{resolvedDisputes.length}</p>
                 <p className="text-xs text-green-700">Resolved</p>
               </CardContent>
             </Card>
             <Card className="border-slate-200 bg-slate-50">
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-slate-900">{closedDisputes.length}</p>
+              <CardContent className="p-3 sm:p-4 text-center">
+                <p className="text-xl sm:text-2xl font-bold text-slate-900">{closedDisputes.length}</p>
                 <p className="text-xs text-slate-700">Closed</p>
               </CardContent>
             </Card>
@@ -716,26 +720,41 @@ export default function AdminDisputesPage() {
         >
           <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
             <Tabs defaultValue="open" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 m-6 mb-0">
-                <TabsTrigger value="open" className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Open ({openDisputes.length})
-                </TabsTrigger>
-                <TabsTrigger value="under_review" className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Under Review ({underReviewDisputes.length})
-                </TabsTrigger>
-                <TabsTrigger value="resolved" className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  Resolved ({resolvedDisputes.length})
-                </TabsTrigger>
-                <TabsTrigger value="closed" className="flex items-center gap-2">
-                  <XCircle className="w-4 h-4" />
-                  Closed ({closedDisputes.length})
-                </TabsTrigger>
-              </TabsList>
+              <div className="px-3 pt-3 sm:px-6 sm:pt-6">
+                <TabsList className="w-full no-scrollbar justify-between gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap rounded-xl p-1">
+                  <TabsTrigger
+                    value="open"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2.5 sm:px-3 py-1.5 sm:py-2"
+                  >
+                    <AlertTriangle className="hidden sm:w-4 sm:h-4" />
+                    Open ({openDisputes.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="under_review"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2.5 sm:px-3 py-1.5 sm:py-2"
+                  >
+                    <Clock className="hidden sm:w-4 sm:h-4" />
+                    <span className="sm:hidden">Review</span>
+                    <span className="hidden sm:inline">Under Review</span> ({underReviewDisputes.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="resolved"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2.5 sm:px-3 py-1.5 sm:py-2"
+                  >
+                    <CheckCircle className="hidden sm:w-4 sm:h-4" />
+                    Resolved ({resolvedDisputes.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="closed"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2.5 sm:px-3 py-1.5 sm:py-2"
+                  >
+                    <XCircle className="hidden sm:w-4 sm:h-4" />
+                    Closed ({closedDisputes.length})
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-              <TabsContent value="open" className="p-6">
+              <TabsContent value="open" className="p-4 sm:p-6">
                 {openDisputes.length > 0 ? (
                   <div>
                     {openDisputes.map(dispute => (
@@ -743,15 +762,17 @@ export default function AdminDisputesPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No open disputes</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-green-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
+                      No open disputes
+                    </h3>
                     <p className="text-slate-600">All caught up!</p>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="under_review" className="p-6">
+              <TabsContent value="under_review" className="p-4 sm:p-6">
                 {underReviewDisputes.length > 0 ? (
                   <div>
                     {underReviewDisputes.map(dispute => (
@@ -759,14 +780,16 @@ export default function AdminDisputesPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <Clock className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No disputes under review</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <Clock className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
+                      No disputes under review
+                    </h3>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="resolved" className="p-6">
+              <TabsContent value="resolved" className="p-4 sm:p-6">
                 {resolvedDisputes.length > 0 ? (
                   <div>
                     {resolvedDisputes.map(dispute => (
@@ -774,14 +797,16 @@ export default function AdminDisputesPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <CheckCircle className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No resolved disputes</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
+                      No resolved disputes
+                    </h3>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="closed" className="p-6">
+              <TabsContent value="closed" className="p-4 sm:p-6">
                 {closedDisputes.length > 0 ? (
                   <div>
                     {closedDisputes.map(dispute => (
@@ -789,9 +814,11 @@ export default function AdminDisputesPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <XCircle className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No closed disputes</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <XCircle className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
+                      No closed disputes
+                    </h3>
                   </div>
                 )}
               </TabsContent>

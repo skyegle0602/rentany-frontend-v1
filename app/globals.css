@@ -166,3 +166,12 @@ div[data-clerk-element="modalContent"],
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide scrollbars while keeping scroll enabled (use for horizontal tab rows on mobile) */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge legacy */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}

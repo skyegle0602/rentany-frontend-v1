@@ -104,7 +104,7 @@ export default function VerificationPrompt({ currentUser, message = "Connect you
         return (
           <Badge className="bg-slate-100 text-slate-800 border-slate-200">
             <Shield className="w-3 h-3 mr-1" />
-            Not Verified
+            Bank not connected
           </Badge>
         );
     }

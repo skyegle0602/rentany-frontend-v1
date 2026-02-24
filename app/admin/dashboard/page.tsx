@@ -759,7 +759,7 @@ export default function AdminDashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
+          {/* <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
                 <Activity className="w-8 h-8 text-blue-600" />
@@ -781,6 +781,43 @@ export default function AdminDashboardPage() {
                 Refresh
               </Button>
             </div>
+          </div> */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-3">
+
+          {/* Left Section */}
+          <div className="flex-1">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <Activity className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
+              Admin Dashboard
+            </h1>
+
+            <p className="text-slate-600 mt-1">
+              Complete platform overview and management
+            </p>
+          </div>
+
+          {/* Right Section */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3 mt-2 md:mt-0">
+            
+            <p className="text-sm text-slate-500">
+              Last updated: {format(new Date(), 'MMM d, yyyy h:mm a')}
+            </p>
+
+            <Button
+              onClick={() => loadDashboardData(false)}
+              disabled={refreshing}
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`}
+              />
+              Refresh
+            </Button>
+
+          </div>
+
           </div>
         </motion.div>
 

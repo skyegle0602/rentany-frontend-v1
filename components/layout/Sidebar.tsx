@@ -20,13 +20,25 @@ interface Category {
   label: string;
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  variant = "desktop",
+  isOpen = false,
+  onClose,
+}: {
+  variant?: "desktop" | "mobile";
+  isOpen?: boolean;
+  onClose?: () => void;
+}) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
   const pathname = usePathname();
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+
+  const closeIfMobile = () => {
+    if (variant === "mobile") onClose?.();
+  };
 
   useEffect(() => {
     const loadUser = async () => {
@@ -63,12 +75,14 @@ export default function Sidebar() {
     e.preventDefault();
     // All users can list items - capability determined by payment setup, not intent
     router.push("/add-item");
+    closeIfMobile();
   };
 
   const handleEditItemClick = (e: React.MouseEvent) => {
     e.preventDefault();
     // All users can edit items - capability determined by payment setup, not intent
     router.push("/bulk-edit-items");
+    closeIfMobile();
   };
   const navigateLinks = [
     { name: "Browse All", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", href: "/home" },
@@ -111,12 +125,20 @@ export default function Sidebar() {
     return pathname === href || pathname?.startsWith(href + "/");
   };
 
+  const containerClassName =
+    variant === "desktop"
+      ? "hidden md:block fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 overflow-y-auto"
+      : `md:hidden fixed left-0 top-0 z-50 h-screen w-64 bg-white border-r border-gray-200 overflow-y-auto transform transition-transform duration-200 ease-out ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`;
+
   return (
-    <div className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 overflow-y-auto">
+    <div className={containerClassName} role="navigation" aria-label="Sidebar navigation">
       <div className="flex flex-col h-full">
         {/* Brand Identity */}
         <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-900">
               <svg
                 className="h-6 w-6 text-white"
@@ -133,6 +155,30 @@ export default function Sidebar() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Rentany</h1>
+            </div>
+
+            {variant === "mobile" ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-2 py-2 text-gray-700 hover:bg-gray-50"
+                aria-label="Close menu"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            ) : null}
           </div>
           <p className="text-sm text-gray-500">Rent anything, from anyone.</p>
         </div>
@@ -213,6 +259,7 @@ export default function Sidebar() {
                   <Link
                     key={link.name}
                     href={link.href}
+                    onClick={closeIfMobile}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                       active
                         ? "bg-blue-700 text-white"
@@ -252,6 +299,7 @@ export default function Sidebar() {
                     <Link
                       key={link.name}
                       href={link.href}
+                    onClick={closeIfMobile}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? "bg-red-700 text-white"
@@ -304,6 +352,7 @@ export default function Sidebar() {
                   <Link
                     key={category.name}
                     href={categoryHref}
+                    onClick={closeIfMobile}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                       active
                         ? "bg-blue-700 text-white"

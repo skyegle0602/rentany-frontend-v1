@@ -347,23 +347,26 @@ export default function ReportsListingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-              <Shield className="w-8 h-8 text-red-500" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" />
               Listing Reports
             </h1>
-            <Badge variant="outline" className="text-lg px-4 py-2 bg-yellow-50 border-yellow-200 text-yellow-700">
+            <Badge
+              variant="outline"
+              className="w-fit text-sm sm:text-lg px-3 py-1.5 sm:px-4 sm:py-2 bg-yellow-50 border-yellow-200 text-yellow-700"
+            >
               {reports.length} Total Reports
             </Badge>
           </div>
-          <p className="text-slate-600">Review and take action on flagged listings</p>
+          <p className="text-slate-600 text-sm sm:text-base">Review and take action on flagged listings</p>
         </motion.div>
 
         <motion.div
@@ -373,22 +376,33 @@ export default function ReportsListingPage() {
         >
           <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
             <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 m-6 mb-0">
-                <TabsTrigger value="pending" className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Pending ({pendingReports.length})
-                </TabsTrigger>
-                <TabsTrigger value="investigating" className="flex items-center gap-2">
-                  <Eye className="w-4 h-4" />
-                  Investigating ({investigatingReports.length})
-                </TabsTrigger>
-                <TabsTrigger value="resolved" className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  Resolved ({resolvedReports.length})
-                </TabsTrigger>
-              </TabsList>
+              <div className="px-3 pt-3 sm:px-6 sm:pt-6">
+                <TabsList className="w-full no-scrollbar justify-between gap-2 overflow-x-auto whitespace-nowrap rounded-xl p-1">
+                  <TabsTrigger
+                    value="pending"
+                    className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm px-3 py-2"
+                  >
+                    <AlertTriangle className="hidden sm:w-4 sm:h-4" />
+                    Pending ({pendingReports.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="investigating"
+                    className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm px-3 py-2"
+                  >
+                    <Eye className="hidden sm:w-4 sm:h-4" />
+                    Investigating ({investigatingReports.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="resolved"
+                    className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm px-3 py-2"
+                  >
+                    <CheckCircle className="hidden sm:w-4 sm:h-4" />
+                    Resolved ({resolvedReports.length})
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-              <TabsContent value={activeTab} className="p-6">
+              <TabsContent value={activeTab} className="p-4 sm:p-6">
                 {filteredReports.length > 0 ? (
                   <div>
                     {filteredReports.map(report => (
@@ -396,11 +410,11 @@ export default function ReportsListingPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-16">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle className="w-8 h-8 text-green-600" />
+                  <div className="text-center py-12 sm:py-16">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-green-600" />
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
                       No {activeTab === 'pending' ? 'pending' : activeTab === 'investigating' ? 'investigating' : 'resolved'} reports
                     </h3>
                     <p className="text-slate-600">All caught up!</p>

@@ -358,19 +358,19 @@ export default function AdminUserReportsPage() {
   const dismissedReports = reports.filter(r => r.status === 'dismissed');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-              <AlertTriangle className="w-8 h-8 text-red-500" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <AlertTriangle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" />
               User Reports
             </h1>
-            <Badge variant="outline" className="text-lg px-4 py-2">
+            <Badge variant="outline" className="w-fit text-sm sm:text-lg px-3 py-1.5 sm:px-4 sm:py-2">
               {reports.length} Total Reports
             </Badge>
           </div>
@@ -384,26 +384,40 @@ export default function AdminUserReportsPage() {
         >
           <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
             <Tabs defaultValue="pending" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 m-6 mb-0">
-                <TabsTrigger value="pending" className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Pending ({pendingReports.length})
-                </TabsTrigger>
-                <TabsTrigger value="under_review" className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Under Review ({underReviewReports.length})
-                </TabsTrigger>
-                <TabsTrigger value="resolved" className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  Resolved ({resolvedReports.length})
-                </TabsTrigger>
-                <TabsTrigger value="dismissed" className="flex items-center gap-2">
-                  <XCircle className="w-4 h-4" />
-                  Dismissed ({dismissedReports.length})
-                </TabsTrigger>
-              </TabsList>
+              <div className="px-3 pt-3 sm:px-6 sm:pt-6">
+                <TabsList className="w-full no-scrollbar justify-between sm:gap-2 overflow-x-auto whitespace-nowrap rounded-xl p-1">
+                  <TabsTrigger
+                    value="pending"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-[11px] sm:text-sm px-3 py-2"
+                  >
+                    <AlertTriangle className="hidden sm:w-4 sm:h-4" />
+                    Pending ({pendingReports.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="under_review"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-[11px] sm:text-sm px-3 py-2"
+                  >
+                    <Clock className="hidden sm:w-4 sm:h-4" />
+                    Under Review ({underReviewReports.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="resolved"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-[11px] sm:text-sm px-3 py-2"
+                  >
+                    <CheckCircle className="hidden sm:w-4 sm:h-4" />
+                    Resolved ({resolvedReports.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="dismissed"
+                    className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-[11px] sm:text-sm px-3 py-2"
+                  >
+                    <XCircle className="hidden sm:w-4 sm:h-4" />
+                    Dismissed ({dismissedReports.length})
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-              <TabsContent value="pending" className="p-6">
+              <TabsContent value="pending" className="p-4 sm:p-6">
                 {pendingReports.length > 0 ? (
                   <div>
                     {pendingReports.map(report => (
@@ -411,14 +425,14 @@ export default function AdminUserReportsPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No pending reports</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-green-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">No pending reports</h3>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="under_review" className="p-6">
+              <TabsContent value="under_review" className="p-4 sm:p-6">
                 {underReviewReports.length > 0 ? (
                   <div>
                     {underReviewReports.map(report => (
@@ -426,14 +440,14 @@ export default function AdminUserReportsPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <Clock className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No reports under review</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <Clock className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">No reports under review</h3>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="resolved" className="p-6">
+              <TabsContent value="resolved" className="p-4 sm:p-6">
                 {resolvedReports.length > 0 ? (
                   <div>
                     {resolvedReports.map(report => (
@@ -441,14 +455,14 @@ export default function AdminUserReportsPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <CheckCircle className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No resolved reports</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <CheckCircle className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">No resolved reports</h3>
                   </div>
                 )}
               </TabsContent>
 
-              <TabsContent value="dismissed" className="p-6">
+              <TabsContent value="dismissed" className="p-4 sm:p-6">
                 {dismissedReports.length > 0 ? (
                   <div>
                     {dismissedReports.map(report => (
@@ -456,9 +470,9 @@ export default function AdminUserReportsPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <XCircle className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No dismissed reports</h3>
+                  <div className="text-center py-10 sm:py-12">
+                    <XCircle className="w-14 h-14 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">No dismissed reports</h3>
                   </div>
                 )}
               </TabsContent>

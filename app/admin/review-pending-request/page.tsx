@@ -171,30 +171,42 @@ export default function PendingRequestPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-                <Clock className="w-8 h-8 text-blue-600" />
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-3">
+            {/* Left Section */}
+            <div className="flex-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-3">
+                <Clock className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
                 Pending Rental Requests
               </h1>
-              <p className="text-slate-600 mt-1">Review and approve or reject rental requests</p>
+
+              <p className="text-slate-600 mt-1">
+                Review and approve or reject rental requests
+              </p>
             </div>
-            <div className="flex items-center gap-3">
+
+            {/* Right Section */}
+            <div className="flex flex-wrap gap-2 mt-2 md:mt-0">
               <Button
                 onClick={loadData}
                 disabled={isLoading}
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/admin/dashboard">
-                  Back to Dashboard
-                </Link>
+
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="w-full sm:w-auto"
+              >
+                <Link href="/admin/dashboard">Back to Dashboard</Link>
               </Button>
             </div>
+
           </div>
         </motion.div>
 
