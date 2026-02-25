@@ -135,9 +135,16 @@ class ApiClient {
         // Try to get token from Clerk instance (available in browser)
         // Clerk Next.js exposes the Clerk instance on window in development
         if (typeof window !== 'undefined') {
-          // Check if Clerk is available globally (set by ClerkProvider)
-          const clerkInstance = (window as any).__clerk_frontend_api || (window as any).Clerk
-          if (clerkInstance?.session) {
+          // IMPORTANT:
+          // `window.__clerk_frontend_api` is usually a string (frontend API key), not the Clerk instance.
+          // Prefer the actual Clerk instance object on `window.Clerk`.
+          const w = window as any
+          const clerkInstance =
+            (w.Clerk && typeof w.Clerk === 'object' ? w.Clerk : null) ||
+            (w.__clerk && typeof w.__clerk === 'object' ? w.__clerk : null) ||
+            null
+
+          if (clerkInstance?.session?.getToken) {
             authToken = await clerkInstance.session.getToken()
           }
         }
