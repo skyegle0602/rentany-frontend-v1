@@ -810,16 +810,18 @@ export async function getCurrentUser(): Promise<UserData | null> {
       }
 
       // Handle "User not found" - might be a transient sync issue, try to sync manually
-      if (response.error?.includes('User not found')) {
-        // Try to force sync the user from Clerk
+      // Note: Only try sync if we got a 404, not for other errors
+      if (response.error?.includes('User not found') && !response.error?.includes('401')) {
+        // Try to force sync the user from Clerk (only once to avoid loops)
         try {
           const syncResponse = await api.request<UserData>('/users/sync', { method: 'POST' })
           if (syncResponse.success && syncResponse.data) {
             return syncResponse.data as UserData
           }
-        } catch (syncError) {
-          // If sync fails, just return null (user might not exist in Clerk)
-          console.warn('User not found and sync failed, returning null')
+        } catch (syncError: any) {
+          // If sync fails, log but don't throw - user might not exist in Clerk yet
+          console.warn('User not found and sync failed:', syncError?.error || syncError?.message || 'Unknown error')
+          // Don't return null here - let it fall through to return null below
         }
         return null
       }
