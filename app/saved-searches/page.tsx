@@ -49,6 +49,13 @@ export default function SavedSearchesPage() {
       // Fetch current user data
       try {
         const user = await getCurrentUser();
+        
+        // Redirect admins to admin dashboard - they shouldn't access saved searches
+        if (user?.role === 'admin') {
+          window.location.href = '/admin/dashboard';
+          return;
+        }
+        
         setCurrentUser(user);
       } catch (error) {
         console.error('Error fetching current user:', error);

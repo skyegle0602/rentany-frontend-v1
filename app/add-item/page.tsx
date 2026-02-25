@@ -84,6 +84,13 @@ export default function AddItemPage() {
   const loadUserData = async () => {
     try {
       const userData = await getCurrentUser();
+      
+      // Redirect admins to admin dashboard - they shouldn't list items
+      if (userData?.role === 'admin') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+      
       setUser(userData);
     } catch (error) {
       console.error("Failed to load current user:", error);

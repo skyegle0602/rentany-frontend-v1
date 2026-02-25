@@ -191,7 +191,8 @@ export default function Sidebar({
               NAVIGATE
             </h2>
             <nav className="space-y-1">
-              {navigateLinks.map((link) => {
+              {/* Hide user-specific links for admins - they only see Browse All and admin links */}
+              {(isAdmin ? navigateLinks.filter(link => link.name === "Browse All") : navigateLinks).map((link) => {
                 const active = isActive(link.href);
                 
                 // Special handling for "List Item" - all users can list items

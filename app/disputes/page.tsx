@@ -106,6 +106,13 @@ export default function DisputesPage() {
         redirectToSignIn();
         return;
       }
+      
+      // Redirect admins to admin dashboard - they manage disputes from admin panel
+      if (currentUser.role === 'admin') {
+        window.location.href = '/admin/disputes';
+        return;
+      }
+      
       setUser(currentUser);
 
       await delay(100);

@@ -129,6 +129,12 @@ export default function ProfilePage() {
       return;
     }
 
+      // Redirect admins to admin dashboard - they shouldn't access user profile
+      if (currentUser.role === 'admin') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+
       console.log('Current user:', currentUser);
       setUser(currentUser);
 

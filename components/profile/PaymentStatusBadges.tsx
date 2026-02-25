@@ -2,9 +2,8 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, Building2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Clock } from 'lucide-react';
 import { type UserData } from '@/lib/api-client';
-import { canRent, canLend } from '@/lib/user-capabilities';
 
 interface PaymentStatusBadgesProps {
   currentUser: UserData | null;
@@ -20,8 +19,8 @@ export default function PaymentStatusBadges({
   const iconSize = size === 'sm' ? 'w-3 h-3' : size === 'md' ? 'w-4 h-4' : 'w-5 h-5';
   const textSize = size === 'sm' ? 'text-xs' : size === 'md' ? 'text-sm' : 'text-base';
 
-  const canRentItems = canRent(currentUser, isAdmin);
-  const canLendItems = canLend(currentUser, isAdmin);
+  // Check actual payment connection status (not capability functions which bypass for admins)
+  const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
   const hasStripeAccount = !!(currentUser as any)?.stripe_account_id;
   const payoutsEnabled = currentUser?.payouts_enabled === true;
   const verificationStatus = currentUser?.verification_status;
@@ -29,7 +28,7 @@ export default function PaymentStatusBadges({
   return (
     <div className="flex flex-wrap items-center gap-2 justify-center">
       {/* Card Status Badge */}
-      {canRentItems ? (
+      {hasPaymentMethod ? (
         <Badge className={`bg-green-100 text-green-800 border-green-200 border flex items-center gap-1 ${textSize}`}>
           <CheckCircle className={iconSize} />
           Card connected

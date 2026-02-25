@@ -523,6 +523,13 @@ export default function RequestsPage() {
       setLoadingStage('Loading account...');
       console.log('⏱️ Step 1: Loading user...');
       const currentUser = await getCurrentUser();
+      
+      // Redirect admins to admin dashboard - they shouldn't access conversations
+      if (currentUser?.role === 'admin') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+      
       setUser(currentUser);
       console.log(`✅ User loaded (${Date.now() - startTime}ms)`);
 

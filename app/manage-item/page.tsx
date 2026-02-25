@@ -140,6 +140,13 @@ function ManageItemPageContent() {
 
       try {
         const user = await getCurrentUser();
+        
+        // Redirect admins to admin dashboard - they shouldn't manage items
+        if (user?.role === 'admin') {
+          window.location.href = '/admin/dashboard';
+          return;
+        }
+        
         setCurrentUser(user);
         
         // Fetch only the specific item instead of all items

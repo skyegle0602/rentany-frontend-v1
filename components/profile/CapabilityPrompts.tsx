@@ -17,6 +17,13 @@ export default function CapabilityPrompts({ currentUser, isAdmin = false }: Capa
   const [isLoadingCard, setIsLoadingCard] = useState(false);
   const [isLoadingBank, setIsLoadingBank] = useState(false);
 
+  // Check actual payment connection status for display (not capability functions which bypass for admins)
+  // Capability functions are used for functional checks (can they rent/lend), but UI should show actual connection status
+  const hasPaymentMethod = !!(currentUser as any)?.stripe_payment_method_id;
+  const hasStripeAccount = !!(currentUser as any)?.stripe_account_id;
+  const payoutsEnabled = currentUser?.payouts_enabled === true;
+  
+  // Use capability functions for functional checks (button disabled state, etc.)
   const canRentItems = canRent(currentUser, isAdmin);
   const canLendItems = canLend(currentUser, isAdmin);
 
@@ -89,16 +96,16 @@ export default function CapabilityPrompts({ currentUser, isAdmin = false }: Capa
           <div className="space-y-2">
             <Button
               onClick={handleConnectCard}
-              disabled={isLoadingCard || canRentItems}
-              variant={canRentItems ? "outline" : "default"}
-              className={`w-full ${canRentItems ? 'bg-green-50 border-green-200 text-green-800 hover:bg-green-100' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              disabled={isLoadingCard || hasPaymentMethod}
+              variant={hasPaymentMethod ? "outline" : "default"}
+              className={`w-full ${hasPaymentMethod ? 'bg-green-50 border-green-200 text-green-800 hover:bg-green-100' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
             >
               {isLoadingCard ? (
                 <>
                   <Loader className="w-4 h-4 mr-2 animate-spin" />
                   Connecting...
                 </>
-              ) : canRentItems ? (
+              ) : hasPaymentMethod ? (
                 <>
                   <CreditCard className="w-4 h-4 mr-2" />
                   Payment method connected
@@ -119,16 +126,16 @@ export default function CapabilityPrompts({ currentUser, isAdmin = false }: Capa
           <div className="space-y-2">
             <Button
               onClick={handleConnectBank}
-              disabled={isLoadingBank || canLendItems}
-              variant={canLendItems ? "outline" : "default"}
-              className={`w-full ${canLendItems ? 'bg-green-50 border-green-200 text-green-800 hover:bg-green-100' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+              disabled={isLoadingBank || payoutsEnabled}
+              variant={payoutsEnabled ? "outline" : "default"}
+              className={`w-full ${payoutsEnabled ? 'bg-green-50 border-green-200 text-green-800 hover:bg-green-100' : 'bg-green-600 hover:bg-green-700 text-white'}`}
             >
               {isLoadingBank ? (
                 <>
                   <Loader className="w-4 h-4 mr-2 animate-spin" />
                   Connecting...
                 </>
-              ) : canLendItems ? (
+              ) : payoutsEnabled ? (
                 <>
                   <Building2 className="w-4 h-4 mr-2" />
                   Bank account connected

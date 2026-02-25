@@ -84,6 +84,13 @@ export default function BulkEditItemsPage() {
         router.push('/home');
         return;
       }
+      
+      // Redirect admins to admin dashboard - they shouldn't manage items
+      if (currentUser.role === 'admin') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+      
       setUser(currentUser);
 
       // Get owner ID (prefer clerk_id, fallback to id or email)

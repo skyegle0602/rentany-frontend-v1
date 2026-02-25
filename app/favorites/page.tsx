@@ -55,6 +55,13 @@ export default function FavoritesPage() {
       // Fetch current user data
       try {
         const user = await getCurrentUser();
+        
+        // Redirect admins to admin dashboard - they shouldn't access favorites
+        if (user?.role === 'admin') {
+          window.location.href = '/admin/dashboard';
+          return;
+        }
+        
         setCurrentUser(user);
       } catch (error) {
         console.error('Error fetching current user:', error);

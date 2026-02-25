@@ -64,8 +64,15 @@ export default function RentalHistoryPage() {
       if (!user) {
         setIsLoading(false);
         return;
-      } // Set the current u
-      // ser in state
+      }
+      
+      // Redirect admins to admin dashboard - they shouldn't access rental history
+      if (user.role === 'admin') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+      
+      // Set the current user in state
       setCurrentUser(user);
       
       // Only load rental requests for the current user (query separately as backend uses AND logic)
