@@ -128,13 +128,40 @@ class ApiClient {
         }
       }
 
+      // Get Clerk JWT token for cross-domain authentication
+      // This is needed when frontend and backend are on different domains
+      let authToken: string | null = null
+      try {
+        // Try to get token from Clerk instance (available in browser)
+        // Clerk Next.js exposes the Clerk instance on window in development
+        if (typeof window !== 'undefined') {
+          // Check if Clerk is available globally (set by ClerkProvider)
+          const clerkInstance = (window as any).__clerk_frontend_api || (window as any).Clerk
+          if (clerkInstance?.session) {
+            authToken = await clerkInstance.session.getToken()
+          }
+        }
+      } catch (error) {
+        // If getting token fails (user not signed in or Clerk not initialized), continue without token
+        // The backend will return 401 if authentication is required
+        // Cookies will still be sent via credentials: 'include' for same-domain requests
+        if (process.env.NODE_ENV === 'development') {
+          console.log('No Clerk token available (user may not be signed in)')
+        }
+      }
+
       // Only set Content-Type to JSON if not already specified and not requesting PDF
       const isPdfRequest = options.headers && 
         (options.headers as any)['Accept']?.includes('application/pdf')
       
-      const headers: HeadersInit = {
+      const headers: Record<string, string> = {
         ...(!isPdfRequest && !(options.headers as any)?.['Content-Type'] ? { 'Content-Type': 'application/json' } : {}),
-        ...options.headers,
+        ...(options.headers as Record<string, string> || {}),
+      }
+
+      // Add Authorization header with Clerk JWT token if available
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`
       }
 
       const url = `${API_BASE}${endpoint}`
@@ -148,7 +175,7 @@ class ApiClient {
         ...options,
         method: options.method || 'GET',
         headers,
-        credentials: 'include', // For HTTP-only cookies (required for Clerk)
+        credentials: 'include', // Still include credentials for same-domain requests
       })
 
       // Check if response is ok before trying to parse
