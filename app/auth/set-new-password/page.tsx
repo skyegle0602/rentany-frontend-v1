@@ -59,7 +59,9 @@ function SetNewPasswordContent() {
         }
       } else if (token) {
         // Fallback: Use backend API if token is provided (for old links)
-        const response = await fetch('http://localhost:5000/api/reset-password', {
+        // Note: Password reset endpoints are typically public (use token in body, not Clerk JWT)
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+        const response = await fetch(`${API_BASE}/reset-password`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
