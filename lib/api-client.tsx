@@ -290,10 +290,42 @@ class ApiClient {
     const formData = new FormData()
     formData.append('file', file)
 
+    // Get Clerk JWT token for cross-domain authentication
+    // This is needed when frontend and backend are on different domains
+    let authToken: string | null = null
+    try {
+      // Try to get token from Clerk instance (available in browser)
+      if (typeof window !== 'undefined') {
+        const w = window as any
+        const clerkInstance =
+          (w.Clerk && typeof w.Clerk === 'object' ? w.Clerk : null) ||
+          (w.__clerk && typeof w.__clerk === 'object' ? w.__clerk : null) ||
+          null
+
+        if (clerkInstance?.session?.getToken) {
+          authToken = await clerkInstance.session.getToken()
+        }
+      }
+    } catch (error) {
+      // If getting token fails, continue without token
+      // The backend will return 401 if authentication is required
+      if (process.env.NODE_ENV === 'development') {
+        console.log('No Clerk token available for file upload (user may not be signed in)')
+      }
+    }
+
+    const headers: Record<string, string> = {}
+    
+    // Add Authorization header with Clerk JWT token if available
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`
+    }
+
     try {
       const response = await fetch(`${API_BASE}/file/upload`, {
         method: 'POST',
         body: formData,
+        headers,
         credentials: 'include',
       })
 
