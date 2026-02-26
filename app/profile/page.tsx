@@ -19,6 +19,7 @@ import DocumentManager from '@/components/profile/DocumentManager';
 import RentalHistoryTab from '@/components/profile/RentalHistoryTab';
 import DisputeHistoryTab from '@/components/profile/DisputeHistoryTab';
 import { getCurrentUser, api, redirectToSignIn, type UserData } from '@/lib/api-client';
+import { useAuth } from '@clerk/nextjs';
 
 interface ItemType {
   id: string;
@@ -40,6 +41,7 @@ interface ReviewData {
 }
 
 export default function ProfilePage() {
+  const { isLoaded: clerkLoaded, userId: clerkUserId } = useAuth();
   const [user, setUser] = useState<UserData | null>(null);
   const [userItems, setUserItems] = useState<ItemType[]>([]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
@@ -49,7 +51,11 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<string>('items');
 
   useEffect(() => {
-    loadUserData();
+    // Wait for Clerk to be loaded before loading user data
+    // This prevents redirect to sign-in when Clerk session isn't ready yet (common after Stripe redirects)
+    if (clerkLoaded) {
+      loadUserData();
+    }
 
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -112,21 +118,48 @@ export default function ProfilePage() {
         window.history.replaceState({}, '', window.location.pathname + (urlParams.get('tab') ? `?tab=${urlParams.get('tab')}` : ''));
       }
     }
-  }, []);
+  }, [clerkLoaded, clerkUserId]);
 
-  const loadUserData = async () => {
+  const loadUserData = async (retryCount = 0) => {
     setIsLoading(true);
     setAuthError(null);
     const startTime = Date.now();
 
     try {
+      // Wait for Clerk to be ready (especially important after Stripe redirects)
+      if (!clerkLoaded) {
+        console.log('⏳ Waiting for Clerk to be ready...');
+        // Retry after a short delay if Clerk isn't loaded yet
+        if (retryCount < 3) {
+          setTimeout(() => loadUserData(retryCount + 1), 500);
+          return;
+        }
+      }
+
+      // Check if user is signed in with Clerk before calling API
+      if (clerkLoaded && !clerkUserId) {
+        console.log('⚠️ No Clerk user ID - user not signed in');
+        setAuthError("Your session has expired. Please sign in again.");
+        redirectToSignIn();
+        setIsLoading(false);
+        return;
+      }
+
       console.log('Loading user data...');
       const currentUser = await getCurrentUser();
+      
+      // If getCurrentUser returns null but Clerk says user is signed in, retry once
+      if (!currentUser && clerkLoaded && clerkUserId && retryCount < 2) {
+        console.log('⚠️ getCurrentUser returned null but Clerk user exists, retrying...');
+        setTimeout(() => loadUserData(retryCount + 1), 1000);
+        return;
+      }
+      
       if (!currentUser) {
         setAuthError("Your session has expired. Please sign in again.");
         redirectToSignIn();
         setIsLoading(false);
-      return;
+        return;
     }
 
       // Redirect admins to admin dashboard - they shouldn't access user profile
