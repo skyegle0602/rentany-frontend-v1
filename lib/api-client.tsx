@@ -90,7 +90,11 @@ export interface UserData {
   can_rent?: boolean; // Derived: !!stripe_payment_method_id
   can_list?: boolean; // Derived: always true (everyone can list)
   can_lend?: boolean; // Derived: !!(stripe_account_id && payouts_enabled)
-  
+
+  // KYC (identity verification for high-risk rentals)
+  kyc_status?: 'none' | 'pending' | 'verified' | 'failed';
+  kyc_verified_at?: string;
+
   [key: string]: any;
 }
 
@@ -188,17 +192,19 @@ class ApiClient {
       // Check if response is ok before trying to parse
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`
+        let errorData: Record<string, unknown> = {}
         try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorData.message || errorMessage
+          const parsed = await response.json()
+          errorData = typeof parsed === 'object' && parsed !== null ? parsed : {}
+          errorMessage = (errorData.error as string) || (errorData.message as string) || errorMessage
         } catch {
-          // If response is not JSON, use status text
           errorMessage = response.statusText || errorMessage
         }
         return {
           success: false,
           error: errorMessage,
-        }
+          ...errorData,
+        } as ApiResponse<T>
       }
 
       // Handle PDF/binary responses
@@ -577,6 +583,50 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     })
+  }
+
+  // Security
+  /** KYC threshold only (any authenticated user). Use for checkout/verify-identity. */
+  async getSecurityThreshold(): Promise<ApiResponse<{ kyc_amount_threshold: number }>> {
+    return this.request('/security/threshold')
+  }
+
+  /** Full security settings (admin only). Use on Admin Security page. */
+  async getSecuritySettings(): Promise<
+    ApiResponse<{ kyc_amount_threshold: number; kyc_high_risk_categories: string[] }>
+  > {
+    return this.request('/security/settings')
+  }
+
+  async updateSecuritySettings(data: {
+    kyc_amount_threshold?: number
+    kyc_high_risk_categories?: string[]
+  }) {
+    return this.request<{
+      kyc_amount_threshold: number
+      kyc_high_risk_categories: string[]
+    }>('/security/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getSecurityItems(params?: { search?: string; limit?: number; offset?: number }) {
+    const query = new URLSearchParams()
+    if (params?.search != null) query.append('search', params.search)
+    if (params?.limit != null) query.append('limit', String(params.limit))
+    if (params?.offset != null) query.append('offset', String(params.offset))
+    const q = query.toString()
+    return this.request<Array<{ id: string; title: string; category: string; daily_rate?: number; high_risk_override: boolean }>>(
+      `/security/items${q ? `?${q}` : ''}`
+    )
+  }
+
+  async updateSecurityItemOverride(itemId: string, high_risk_override: boolean) {
+    return this.request<{ id: string; title: string; category: string; daily_rate?: number; high_risk_override: boolean }>(
+      `/security/items/${itemId}`,
+      { method: 'PUT', body: JSON.stringify({ high_risk_override }) }
+    )
   }
 
   // Verification

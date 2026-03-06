@@ -40,9 +40,11 @@ interface AvailabilityCalendarProps {
   onDateChange?: (dates: { selected_dates: string[] }) => void;
   noticePeriodHours?: number; // Hours before pickup required (for renters)
   sameDayPickup?: boolean; // Whether same-day pickup is allowed
+  /** When set (e.g. after KYC return), calendar will show these dates so selection is preserved */
+  selectedDatesFromParent?: string[];
 }
 
-export default function AvailabilityCalendar({ itemId, isOwner = false, selectionMode = 'range', onDateChange, noticePeriodHours = 24, sameDayPickup = false }: AvailabilityCalendarProps) {
+export default function AvailabilityCalendar({ itemId, isOwner = false, selectionMode = 'range', onDateChange, noticePeriodHours = 24, sameDayPickup = false, selectedDatesFromParent }: AvailabilityCalendarProps) {
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedDates, setSelectedDates] = useState<Date[]>([]); // For multiple date selection (owner mode)
@@ -73,6 +75,30 @@ export default function AvailabilityCalendar({ itemId, isOwner = false, selectio
   useEffect(() => {
     loadAvailability();
   }, [loadAvailability]);
+
+  // Sync calendar display when parent passes restored dates (e.g. after KYC return)
+  useEffect(() => {
+    if (!selectedDatesFromParent || selectedDatesFromParent.length === 0) {
+      if (selectionMode === 'range') {
+        setSelectedRange(undefined);
+      } else {
+        setSelectedDates([]);
+      }
+      return;
+    }
+    const sorted = [...selectedDatesFromParent].sort();
+    const parseLocal = (s: string) => {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, (m ?? 1) - 1, d ?? 1);
+    };
+    if (selectionMode === 'range') {
+      const from = parseLocal(sorted[0]);
+      const to = parseLocal(sorted[sorted.length - 1]);
+      setSelectedRange({ from, to });
+    } else {
+      setSelectedDates(sorted.map(parseLocal));
+    }
+  }, [selectedDatesFromParent, selectionMode]);
 
   const handleMultipleSelect = (dates: Date[] | undefined) => {
     // In multiple mode, react-day-picker passes an array of selected dates

@@ -187,6 +187,27 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
   const [successDialogData, setSuccessDialogData] = useState<SuccessDialogDataType | null>(null);
   const [showImageZoom, setShowImageZoom] = useState<boolean>(false);
 
+  // If renter is sent to KYC and comes back, restore their draft booking (dates + message)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem('rental_request_draft');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { item_id?: string; rentalForm?: Partial<RentalFormType> };
+      if (parsed?.item_id !== itemId || !parsed?.rentalForm) return;
+
+      setRentalForm((prev) => ({
+        ...prev,
+        ...parsed.rentalForm,
+      }));
+
+      // Clear after applying so it doesn't override future choices
+      window.sessionStorage.removeItem('rental_request_draft');
+    } catch {
+      // ignore
+    }
+  }, [itemId]);
+
   useEffect(() => {
     const loadItemDetails = async () => {
       if (!itemId) {
@@ -479,7 +500,35 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
         status: initialStatus
       });
 
-      if (!requestResponse.success || !requestResponse.data) {
+      if (!requestResponse.success) {
+        const res = requestResponse as { kyc_required?: boolean; risk_trigger?: string };
+        if (res.kyc_required) {
+          setIsSubmittingRequest(false);
+          // Save current draft so renter can continue after KYC
+          try {
+            if (typeof window !== 'undefined') {
+              window.sessionStorage.setItem(
+                'rental_request_draft',
+                JSON.stringify({
+                  item_id: itemId,
+                  rentalForm: {
+                    selected_dates: rentalForm.selected_dates || [],
+                    start_date: rentalForm.start_date || '',
+                    end_date: rentalForm.end_date || '',
+                    message: rentalForm.message || '',
+                  },
+                })
+              );
+            }
+          } catch {
+            // ignore storage errors
+          }
+          router.push(`/verify-identity?from=rental-request&item_id=${itemId}`);
+          return;
+        }
+        throw new Error(requestResponse.error || 'Failed to create rental request');
+      }
+      if (!requestResponse.data) {
         throw new Error(requestResponse.error || 'Failed to create rental request');
       }
 
@@ -599,6 +648,13 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
       
       setRentalForm({ start_date: "", end_date: "", selected_dates: [], message: "" });
       setShowSuccessDialog(true);
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('rental_request_draft');
+        }
+      } catch {
+        // ignore
+      }
     } catch (error) {
       console.error("Error submitting rental request:", error);
       alert("Failed to submit rental request. Please try again.");
@@ -1039,6 +1095,7 @@ export default function ItemDetailsContent({ itemId }: ItemDetailsContentProps) 
                            onDateChange={handleDateChange}
                            noticePeriodHours={item.notice_period_hours || 24}
                            sameDayPickup={item.same_day_pickup || false}
+                           selectedDatesFromParent={rentalForm.selected_dates || []}
                          />
 
                       <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
